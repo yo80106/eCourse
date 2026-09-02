@@ -7,33 +7,54 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Firebase's Email/Password provider allows public self-service sign-up
+    // via its REST API regardless of whether the app's own UI exposes a
+    // signup form -- anyone with the (public, non-secret) apiKey can create
+    // an account directly. So "is signed in" alone does NOT mean "was
+    // invited". The invitedEmails collection is the actual invite gate: the
+    // admin adds a document (ID = lowercased email) via Console/Admin SDK
+    // for each invited student, and only signed-in users whose email has a
+    // matching document may read course content.
+    function isInvited() {
+      return isSignedIn()
+        && request.auth.token.email != null
+        && exists(/databases/$(database)/documents/invitedEmails/$(request.auth.token.email.lower()));
+    }
+
     // Course content is curated by the admin outside the app (Firebase
     // Console or a script using the Admin SDK, which bypasses these rules).
-    // Any signed-in (invited) user may read the full catalog; the client
-    // never writes to these collections.
+    // Only invited users may read the catalog; the client never writes to
+    // these collections.
     match /courses/{courseId} {
-      allow read: if isSignedIn();
+      allow read: if isInvited();
       allow write: if false;
     }
 
     match /lessons/{lessonId} {
-      allow read: if isSignedIn();
+      allow read: if isInvited();
       allow write: if false;
     }
 
     match /resources/{resourceId} {
-      allow read: if isSignedIn();
+      allow read: if isInvited();
       allow write: if false;
     }
 
     match /lesson_faqs/{faqId} {
-      allow read: if isSignedIn();
+      allow read: if isInvited();
       allow write: if false;
     }
 
     match /lesson_resources/{lessonResourceId} {
-      allow read: if isSignedIn();
+      allow read: if isInvited();
       allow write: if false;
+    }
+
+    // Admin-managed invite list. ID = lowercased invited email. Never
+    // readable/writable by clients -- only via Console or the Admin SDK,
+    // both of which bypass these rules.
+    match /invitedEmails/{email} {
+      allow read, write: if false;
     }
 
     // Not written by the app yet, but scoped correctly for if/when a profile
