@@ -1,7 +1,7 @@
 <script>
   import { onMount } from "svelte";
   import { navigate, useLocation } from "svelte-routing";
-  import { currentUser } from "../lib/pocketbase";
+  import { currentUser } from "../lib/authStore";
   import Icon from "@iconify/svelte";
   import Title from "../components/Title.svelte";
   import { t } from "../lib/i18n";

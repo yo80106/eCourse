@@ -1,19 +1,18 @@
 <script>
-  import { onMount, afterUpdate, tick } from "svelte";
+  import { onMount, tick } from "svelte";
   import { slide } from "svelte/transition";
   import { quintOut } from "svelte/easing";
   import {
-    pb,
     lessons,
     courses,
     progress,
     lesson_faqs,
     lesson_resources,
-    currentUser,
     fetchRecords,
-    updateProgressStatus,
-  } from "../lib/pocketbase";
-  import { cleanFileName } from "../lib/strConverter";
+    setCourseProgress,
+    upsertLocalProgress,
+  } from "../lib/db";
+  import { currentUser } from "../lib/authStore";
   import { navigate, useLocation } from "svelte-routing";
   import Sidebar from "../components/Sidebar.svelte";
   import {
@@ -23,16 +22,15 @@
     storeLessons,
     showAlert,
   } from "../lib/store";
-  import Plyr from "plyr";
   import Icon from "@iconify/svelte";
-  import slugify from "slugify";
+  import { lessonSlug } from "../lib/strConverter";
   import NotFound from "./NotFound.svelte";
   import Title from "../components/Title.svelte";
   import { t } from "../lib/i18n";
   export let lessonTitle;
 
   let loading = {};
-  let lessonVideo;
+  let videoLoading = true;
   let currentCourseStatus = "";
   let currentLessonTitle = "";
 
@@ -48,23 +46,14 @@
     }
   });
 
-  afterUpdate(() => {
-    lessonVideo = new Plyr("#lessonVideo", {
-      invertTime: false,
-      toggleInvert: false,
-      captions: {
-        active: true,
-        update: true,
-      },
-    });
-  });
+  // reset the video skeleton whenever navigating to a different lesson
+  $: lessonTitle, (videoLoading = true);
 
   // find the current course status
   $: {
     const currentLesson = $lessons.find(
       (lesson) =>
-        slugify(lesson.title, { lower: true, strict: true }) ===
-        slugify(lessonTitle, { lower: true, strict: true }),
+        lessonSlug(lesson) === lessonTitle,
     );
     if (currentLesson) {
       currentLessonTitle = currentLesson.title;
@@ -91,8 +80,7 @@
   function findCurrentLessonIndex(courseLessons) {
     return courseLessons.findIndex(
       (lesson) =>
-        slugify(lesson.title, { lower: true, strict: true }) ===
-        slugify(lessonTitle, { lower: true, strict: true }),
+        lessonSlug(lesson) === lessonTitle,
     );
   }
 
@@ -100,8 +88,7 @@
   function goToNextLesson() {
     const currentLesson = $lessons.find(
       (lesson) =>
-        slugify(lesson.title, { lower: true, strict: true }) ===
-        slugify(lessonTitle, { lower: true, strict: true }),
+        lessonSlug(lesson) === lessonTitle,
     );
     if (currentLesson) {
       const courseLessons = getCourseLessons(currentLesson.course);
@@ -112,7 +99,7 @@
       ) {
         const nextLesson = courseLessons[currentLessonIndex + 1];
         navigate(
-          `/${slugify(nextLesson.title, { lower: true, strict: true })}`,
+          `/${lessonSlug(nextLesson)}`,
         );
 
         const lessonsByCourse = getStoredLessons();
@@ -126,8 +113,7 @@
   function goToPreviousLesson() {
     const currentLesson = $lessons.find(
       (lesson) =>
-        slugify(lesson.title, { lower: true, strict: true }) ===
-        slugify(lessonTitle, { lower: true, strict: true }),
+        lessonSlug(lesson) === lessonTitle,
     );
     if (currentLesson) {
       const courseLessons = getCourseLessons(currentLesson.course);
@@ -135,7 +121,7 @@
       if (currentLessonIndex > 0) {
         const previousLesson = courseLessons[currentLessonIndex - 1];
         navigate(
-          `/${slugify(previousLesson.title, { lower: true, strict: true })}`,
+          `/${lessonSlug(previousLesson)}`,
         );
 
         const lessonsByCourse = getStoredLessons();
@@ -145,50 +131,45 @@
     }
   }
 
-  // function to complete a course and update the progress status to "Completed"
+  // function to mark a course as completed (creates the progress record if
+  // the student hasn't started/touched it yet -- self-directed learning has
+  // no auto-assigned progress)
   async function completeCourse(lessonId) {
     const currentLesson = $lessons.find(
       (lesson) =>
-        slugify(lesson.title, { lower: true, strict: true }) ===
-        slugify(lessonTitle, { lower: true, strict: true }),
+        lessonSlug(lesson) === lessonTitle,
     );
     const currentCourse = $courses.find(
       (course) => course.id === currentLesson.course,
     );
-    const progressRecord = $progress.find(
-      (progressRecord) => progressRecord.course === currentCourse.id,
+
+    if (currentCourseStatus === "Completed") {
+      return;
+    }
+
+    loading[lessonId] = true;
+    const updatedProgressRecord = await setCourseProgress(
+      currentCourse.id,
+      "Completed",
     );
 
-    if (progressRecord.status === "In Progress") {
-      loading[lessonId] = true;
-      const updatedProgressRecord = await updateProgressStatus(
-        progressRecord.id,
-        "Completed",
+    if (!updatedProgressRecord) {
+      loading[lessonId] = false;
+    }
+
+    if (updatedProgressRecord) {
+      await tick();
+
+      upsertLocalProgress(updatedProgressRecord);
+
+      loading[lessonId] = false;
+
+      navigate("/");
+
+      showAlert(
+        `${currentCourse.title.length > 30 ? currentCourse.title.slice(0, 30) + "..." : currentCourse.title} completed successfully`,
+        "success",
       );
-
-      if (!updatedProgressRecord) {
-        loading[lessonId] = false;
-      }
-
-      if (updatedProgressRecord) {
-        await tick();
-
-        $progress = $progress.map((progressRecord) => {
-          if (progressRecord.course === currentCourse.id) {
-            return { ...progressRecord, status: "Completed" };
-          }
-          return progressRecord;
-        });
-
-        loading[lessonId] = false;
-
-        navigate("/");
-
-        showAlert(
-          `${currentCourse.title.length > 30 ? currentCourse.title.slice(0, 30) + "..." : currentCourse.title} completed successfully`,
-          "success",
-        );
-      }
     }
   }
 </script>
@@ -221,18 +202,18 @@
           />
         </div>
       </div>
-    {:else if $lessons.length === 0 || $lessons.every((lesson) => slugify( lesson.title, { lower: true, strict: true }, ) !== $lessonLocation.pathname.slice(1))}
+    {:else if $lessons.length === 0 || $lessons.every((lesson) => lessonSlug(lesson) !== $lessonLocation.pathname.slice(1))}
       <NotFound page="lesson" />
     {:else}
       {#each $lessons as lesson (lesson.id)}
-        {#if slugify( lesson.title, { lower: true, strict: true }, ) === slugify( lessonTitle, { lower: true, strict: true }, )}
+        {#if lessonSlug(lesson) === lessonTitle}
           <section
             class={$lesson_faqs.filter((faq) => faq.lesson.includes(lesson.id))
               .length > 0 ||
             $lesson_resources.filter((resource) =>
               resource.lesson.includes(lesson.id),
             ).length > 0 ||
-            lesson.downloads.length > 0
+            lesson.downloads?.length > 0
               ? "flex flex-1 flex-col justify-between gap-5 overflow-y-scroll bg-dark p-5"
               : "flex flex-1 flex-col justify-between overflow-y-scroll bg-dark p-5"}
           >
@@ -262,9 +243,8 @@
                   </h1>
                 </div>
 
-                {#if currentCourseStatus === "In Progress" || currentCourseStatus === "Completed"}
-                  <div class="flex items-center gap-3 sm:w-full sm:flex-col">
-                    {#if !findCurrentLessonIndex(getCourseLessons($lessons.find((lesson) => slugify( lesson.title, { lower: true, strict: true }, ) === slugify( lessonTitle, { lower: true, strict: true }, )).course)) <= 0}
+                <div class="flex items-center gap-3 sm:w-full sm:flex-col">
+                    {#if !findCurrentLessonIndex(getCourseLessons($lessons.find((lesson) => lessonSlug(lesson) === lessonTitle).course)) <= 0}
                       <button
                         on:click={goToPreviousLesson}
                         class="line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md bg-white/10 px-4 py-2 outline outline-[1.5px] outline-white/20 transition hover:bg-white/20 sm:order-last sm:w-full"
@@ -274,7 +254,7 @@
                       </button>
                     {/if}
 
-                    {#if findCurrentLessonIndex(getCourseLessons($lessons.find((lesson) => slugify( lesson.title, { lower: true, strict: true }, ) === slugify( lessonTitle, { lower: true, strict: true }, )).course)) >= getCourseLessons($lessons.find((lesson) => slugify( lesson.title, { lower: true, strict: true }, ) === slugify( lessonTitle, { lower: true, strict: true }, )).course).length - 1}
+                    {#if findCurrentLessonIndex(getCourseLessons($lessons.find((lesson) => lessonSlug(lesson) === lessonTitle).course)) >= getCourseLessons($lessons.find((lesson) => lessonSlug(lesson) === lessonTitle).course).length - 1}
                       <button
                         on:click={() => completeCourse(lesson.id)}
                         class={loading[lesson.id] ||
@@ -303,27 +283,31 @@
                         <Icon class="flex-shrink-0" icon="ph:arrow-right" />
                       </button>
                     {/if}
-                  </div>
-                {/if}
+                </div>
               </div>
 
-              {#if lesson.video}
-                <video
-                  controls
-                  crossorigin
-                  playsinline
-                  id="lessonVideo"
-                  data-poster={pb.files.getUrl(lesson, lesson.thumbnail)}
+              {#if lesson.driveFileId}
+                <div
+                  class="relative aspect-video w-full overflow-hidden rounded-md bg-white/5"
                 >
-                  <source src={pb.files.getUrl(lesson, lesson.video)} />
-                  <track
-                    kind="captions"
-                    label="English captions"
-                    src={pb.files.getUrl(lesson, lesson.captions)}
-                    srclang="en"
-                    default
-                  />
-                </video>
+                  {#if videoLoading}
+                    <div
+                      class="absolute inset-0 flex animate-pulse items-center justify-center bg-white/10"
+                    >
+                      <Icon
+                        class="flex-shrink-0 text-4xl text-white/20"
+                        icon="svg-spinners:bars-scale-fade"
+                      />
+                    </div>
+                  {/if}
+                  <iframe
+                    title={lesson.title}
+                    src={`https://drive.google.com/file/d/${lesson.driveFileId}/preview`}
+                    class="absolute inset-0 h-full w-full"
+                    allow="autoplay"
+                    on:load={() => (videoLoading = false)}
+                  ></iframe>
+                </div>
               {/if}
 
               {#if lesson.content}
@@ -423,7 +407,7 @@
                 </div>
               {/if}
 
-              {#if lesson.downloads.length > 0}
+              {#if lesson.downloads?.length > 0}
                 <div class="flex-1 space-y-4 md:w-full">
                   <h2 class="flex items-center gap-2 text-base">
                     <Icon class="flex-shrink-0" icon="ph:file" />
@@ -431,12 +415,12 @@
                   </h2>
                   {#each lesson.downloads as download}
                     <a
-                      href={pb.files.getUrl(lesson, download)}
-                      download
+                      href={download.link}
+                      target="_blank"
                       class="block w-full rounded-md bg-white/10 p-2 outline outline-[1.5px] outline-white/20 transition hover:bg-white/20"
                     >
                       <div class="flex items-center justify-between gap-2">
-                        <h3 class="line-clamp-1">{cleanFileName(download)}</h3>
+                        <h3 class="line-clamp-1">{download.name}</h3>
                         <Icon class="flex-shrink-0" icon="ph:download-simple" />
                       </div>
                     </a>

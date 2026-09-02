@@ -25,6 +25,7 @@
     "vite": "^5.0.11"
   },
   "dependencies": {
+    "firebase": "^12.18.0",
     "plyr": "^3.7.8",
     "pocketbase": "^0.21.1",
     "slugify": "^1.6.6",

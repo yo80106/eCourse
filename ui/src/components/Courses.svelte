@@ -3,10 +3,11 @@
     lessons,
     courses,
     progress,
-    updateProgressStatus,
-  } from "../lib/pocketbase";
+    setCourseProgress,
+    upsertLocalProgress,
+  } from "../lib/db";
   import Icon from "@iconify/svelte";
-  import slugify from "slugify";
+  import { lessonSlug } from "../lib/strConverter";
   import {
     isSidebarVisible,
     isLoading,
@@ -21,6 +22,18 @@
   let loading = {};
   let openCourseId = "";
   let enableReactivity = true;
+
+  // self-directed learning: courses have no auto-assigned progress record, so
+  // default to "Not Started" for any course the user hasn't touched yet
+  $: progressByCourse = Object.fromEntries(
+    $courses.map((course) => [
+      course.id,
+      $progress.find((progressRecord) => progressRecord.course === course.id) ?? {
+        course: course.id,
+        status: "Not Started",
+      },
+    ]),
+  );
 
   // only courses that match a progress record with "In Progress" status are set to open
   $: if (enableReactivity) {
@@ -52,23 +65,16 @@
 
   // function to navigate to the first lesson of a course and update the status to "In Progress"
   async function goToFirstLessonOfCourse(courseId) {
-    const progressRecord = $progress.find(
-      (progressRecord) => progressRecord.course === courseId,
-    );
+    const progressRecord = progressByCourse[courseId];
 
     if (progressRecord.status === "Not Started") {
-      const updatedProgressRecord = await updateProgressStatus(
-        progressRecord.id,
+      const updatedProgressRecord = await setCourseProgress(
+        courseId,
         "In Progress",
       );
       if (updatedProgressRecord) {
         await tick();
-        $progress = $progress.map((progressRecord) => {
-          if (progressRecord.course === courseId) {
-            return { ...progressRecord, status: "In Progress" };
-          }
-          return progressRecord;
-        });
+        upsertLocalProgress(updatedProgressRecord);
       }
     }
 
@@ -77,13 +83,13 @@
 
     if (currentLesson) {
       navigate(
-        `/${slugify(currentLesson.title, { lower: true, strict: true })}`,
+        `/${lessonSlug(currentLesson)}`,
       );
     } else {
       const firstLesson = $lessons.find((lesson) => lesson.course === courseId);
       if (firstLesson) {
         navigate(
-          `/${slugify(firstLesson.title, { lower: true, strict: true })}`,
+          `/${lessonSlug(firstLesson)}`,
         );
 
         lessonsByCourse[courseId] = firstLesson;
@@ -94,17 +100,15 @@
 
   // function to reset the status of a course back to "Not Started"
   async function resetProgress(courseId) {
-    const progressRecord = $progress.find(
-      (progressRecord) => progressRecord.course === courseId,
-    );
+    const progressRecord = progressByCourse[courseId];
 
     if (
       progressRecord.status === "Completed" ||
       progressRecord.status === "In Progress"
     ) {
       loading[courseId] = true;
-      const updatedProgressRecord = await updateProgressStatus(
-        progressRecord.id,
+      const updatedProgressRecord = await setCourseProgress(
+        courseId,
         "Not Started",
       );
 
@@ -115,12 +119,7 @@
       if (updatedProgressRecord) {
         await tick();
 
-        $progress = $progress.map((progressRecord) => {
-          if (progressRecord.course === courseId) {
-            return { ...progressRecord, status: "Not Started" };
-          }
-          return progressRecord;
-        });
+        upsertLocalProgress(updatedProgressRecord);
 
         openCourseId = "";
         enableReactivity = false;
@@ -209,68 +208,64 @@
             ? "w-full cursor-pointer space-y-5 rounded-b-none rounded-t-md bg-white/5 p-5"
             : "w-full cursor-pointer space-y-5 rounded-md bg-white/5 p-5"}
         >
-          {#each $progress as progressRecord (progressRecord.id)}
-            {#if course.id === progressRecord.course}
-              <div
-                class="flex w-full items-center justify-between gap-5 sm:flex-col"
+          <div
+            class="flex w-full items-center justify-between gap-5 sm:flex-col"
+          >
+            <div
+              class="flex items-center gap-3 sm:w-full xs:flex-col xs:items-start"
+            >
+              <h3
+                class={progressByCourse[course.id].status === "Completed"
+                  ? "rounded-full bg-emerald-400/10 px-3 py-1 text-emerald-400/70"
+                  : progressByCourse[course.id].status === "In Progress"
+                    ? "rounded-full bg-amber-400/10 px-3 py-1 text-amber-400/70"
+                    : "rounded-full bg-white/10 px-3 py-1 text-white/70"}
               >
-                <div
-                  class="flex items-center gap-3 sm:w-full xs:flex-col xs:items-start"
-                >
-                  <h3
-                    class={progressRecord.status === "Completed"
-                      ? "rounded-full bg-emerald-400/10 px-3 py-1 text-emerald-400/70"
-                      : progressRecord.status === "In Progress"
-                        ? "rounded-full bg-amber-400/10 px-3 py-1 text-amber-400/70"
-                        : "rounded-full bg-white/10 px-3 py-1 text-white/70"}
-                  >
-                    {progressRecord.status === "Completed"
-                      ? $t("completed")
-                      : progressRecord.status === "In Progress"
-                        ? $t("inProgress")
-                        : $t("notStarted")}
-                  </h3>
-                  <h3 class="flex items-center gap-2 text-white/50">
-                    <Icon class="flex-shrink-0 text-lg" icon="ph:book-open" />
-                    {$lessons.filter((lesson) => lesson.course === course.id)
-                      .length}
-                    {$lessons.filter((lesson) => lesson.course === course.id)
-                      .length === 1
-                      ? $t("lessonInThisCourse")
-                      : $t("lessonsInThisCourse")}
-                  </h3>
-                </div>
-                <div class="flex items-center gap-3 sm:w-full">
-                  {#if progressRecord.status === "Completed" || progressRecord.status === "In Progress"}
-                    <button
-                      on:click|stopPropagation
-                      on:click={() => resetProgress(course.id)}
-                      class={loading[course.id]
-                        ? "pointer-events-none line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md px-4 py-2 text-red-400 opacity-50 outline outline-[1.5px] outline-red-400/20 transition hover:bg-red-400/20 sm:w-full sm:flex-1 sm:px-0"
-                        : "line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md px-4 py-2 text-red-400 outline outline-[1.5px] outline-red-400/20 transition hover:bg-red-400/20 sm:w-full sm:flex-1 sm:px-0"}
-                      >{$t("resetProgress")}
-                      {#if loading[course.id]}
-                        <Icon
-                          class="flex-shrink-0 animate-spin text-base"
-                          icon="fluent:spinner-ios-16-regular"
-                        />
-                      {/if}
-                    </button>
+                {progressByCourse[course.id].status === "Completed"
+                  ? $t("completed")
+                  : progressByCourse[course.id].status === "In Progress"
+                    ? $t("inProgress")
+                    : $t("notStarted")}
+              </h3>
+              <h3 class="flex items-center gap-2 text-white/50">
+                <Icon class="flex-shrink-0 text-lg" icon="ph:book-open" />
+                {$lessons.filter((lesson) => lesson.course === course.id)
+                  .length}
+                {$lessons.filter((lesson) => lesson.course === course.id)
+                  .length === 1
+                  ? $t("lessonInThisCourse")
+                  : $t("lessonsInThisCourse")}
+              </h3>
+            </div>
+            <div class="flex items-center gap-3 sm:w-full">
+              {#if progressByCourse[course.id].status === "Completed" || progressByCourse[course.id].status === "In Progress"}
+                <button
+                  on:click|stopPropagation
+                  on:click={() => resetProgress(course.id)}
+                  class={loading[course.id]
+                    ? "pointer-events-none line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md px-4 py-2 text-red-400 opacity-50 outline outline-[1.5px] outline-red-400/20 transition hover:bg-red-400/20 sm:w-full sm:flex-1 sm:px-0"
+                    : "line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md px-4 py-2 text-red-400 outline outline-[1.5px] outline-red-400/20 transition hover:bg-red-400/20 sm:w-full sm:flex-1 sm:px-0"}
+                  >{$t("resetProgress")}
+                  {#if loading[course.id]}
+                    <Icon
+                      class="flex-shrink-0 animate-spin text-base"
+                      icon="fluent:spinner-ios-16-regular"
+                    />
                   {/if}
-                  <button
-                    on:click|stopPropagation
-                    on:click={() => goToFirstLessonOfCourse(course.id)}
-                    class="line-clamp-1 truncate rounded-md bg-white/10 px-4 py-2 outline outline-[1.5px] outline-white/20 transition hover:bg-white/20 sm:w-full sm:flex-1 sm:px-0"
-                    >{progressRecord.status === "Completed"
-                      ? $t("openCourse")
-                      : progressRecord.status === "In Progress"
-                        ? $t("continueCourse")
-                        : $t("startCourse")}</button
-                  >
-                </div>
-              </div>
-            {/if}
-          {/each}
+                </button>
+              {/if}
+              <button
+                on:click|stopPropagation
+                on:click={() => goToFirstLessonOfCourse(course.id)}
+                class="line-clamp-1 truncate rounded-md bg-white/10 px-4 py-2 outline outline-[1.5px] outline-white/20 transition hover:bg-white/20 sm:w-full sm:flex-1 sm:px-0"
+                >{progressByCourse[course.id].status === "Completed"
+                  ? $t("openCourse")
+                  : progressByCourse[course.id].status === "In Progress"
+                    ? $t("continueCourse")
+                    : $t("startCourse")}</button
+              >
+            </div>
+          </div>
           <div class="w-full space-y-2">
             <h1 class="text-base leading-relaxed">{course.title}</h1>
             {#if course.description}
@@ -287,7 +282,7 @@
                 class="flex w-full items-center justify-between gap-5 border-t-[1.5px] border-t-white/10 p-5"
               >
                 <div class="flex items-center gap-3">
-                  {#if lesson.video}
+                  {#if lesson.driveFileId}
                     <Icon
                       class="flex-shrink-0 text-3xl text-main"
                       icon="ph:video"
@@ -307,7 +302,7 @@
                 <button
                   on:click={() =>
                     navigate(
-                      `/${slugify(lesson.title, { lower: true, strict: true })}`,
+                      `/${lessonSlug(lesson)}`,
                     )}
                   class="flex items-center gap-2 p-2 text-white/50 transition hover:text-white"
                 >

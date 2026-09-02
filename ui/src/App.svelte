@@ -1,6 +1,6 @@
 <script>
   import { Router, Route } from "svelte-routing";
-  import { currentUser } from "./lib/pocketbase";
+  import { currentUser } from "./lib/authStore";
   import NotFound from "./routes/NotFound.svelte";
   import Login from "./routes/Login.svelte";
   import MyCourses from "./routes/MyCourses.svelte";

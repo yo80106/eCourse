@@ -1,0 +1,67 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Course content is curated by the admin outside the app (Firebase
+    // Console or a script using the Admin SDK, which bypasses these rules).
+    // Any signed-in (invited) user may read the full catalog; the client
+    // never writes to these collections.
+    match /courses/{courseId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /lessons/{lessonId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /resources/{resourceId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /lesson_faqs/{faqId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    match /lesson_resources/{lessonResourceId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Not written by the app yet, but scoped correctly for if/when a profile
+    // feature is added.
+    match /users/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Self-reported learning progress: one doc per (user, course), created
+    // on demand the first time a student marks progress. No auto-assignment.
+    match /progress/{progressId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow create: if isSignedIn()
+        && progressId == request.auth.uid + "_" + request.resource.data.course
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.course is string
+        && request.resource.data.course.size() > 0
+        && request.resource.data.course.size() < 200
+        && request.resource.data.status in ["Not Started", "In Progress", "Completed"]
+        && request.resource.data.keys().hasOnly(["userId", "course", "status"]);
+
+      allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.course == resource.data.course
+        && request.resource.data.status in ["Not Started", "In Progress", "Completed"]
+        && request.resource.data.keys().hasOnly(["userId", "course", "status"]);
+    }
+  }
+}

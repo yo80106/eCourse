@@ -1,6 +1,7 @@
 <script>
   import { onMount } from "svelte";
-  import { currentUser, fetchRecords } from "../lib/pocketbase";
+  import { currentUser } from "../lib/authStore";
+  import { fetchRecords } from "../lib/db";
   import { isLoading } from "../lib/store";
   import Sidebar from "../components/Sidebar.svelte";
   import Courses from "../components/Courses.svelte";

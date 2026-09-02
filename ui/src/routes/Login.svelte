@@ -4,7 +4,7 @@
   import { slide, scale } from "svelte/transition";
   import { quintOut } from "svelte/easing";
   import Icon from "@iconify/svelte";
-  import { pb } from "../lib/pocketbase";
+  import { login as firebaseLogin } from "../lib/auth";
   import { navigate } from "svelte-routing";
   import Title from "../components/Title.svelte";
   import { t } from "../lib/i18n";
@@ -22,7 +22,7 @@
   let isFormSubmitted = false;
   let loginError = false;
 
-  $: isUsernameValid = username.length >= 3 && !/\s/.test(username);
+  $: isUsernameValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username);
   $: isPasswordValid = password.length >= 8;
 
   onMount(() => {
@@ -38,7 +38,7 @@
     if (isUsernameValid && isPasswordValid) {
       isLoading = true;
       try {
-        await pb.collection("users").authWithPassword(username, password);
+        await firebaseLogin(username, password);
         navigate("/");
       } catch (err) {
         loginError = true;
@@ -87,7 +87,7 @@
             ? "rounded-md bg-red-400/5 p-2 text-red-400 outline outline-[1.5px] outline-red-400/10 transition-all placeholder:text-red-400/50 focus:outline-red-400/20"
             : "rounded-md bg-white/5 p-2 outline outline-[1.5px] outline-white/10 transition-all placeholder:text-white/50 focus:outline-white/20"}
           placeholder={$t("username")}
-          type="text"
+          type="email"
         />
         {#if !isUsernameValid && isFormSubmitted}
           <h3

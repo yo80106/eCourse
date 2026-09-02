@@ -7,7 +7,9 @@
   import Icon from "@iconify/svelte";
   import { scrollToCourse } from "../lib/scroll";
   import { isSidebarVisible, isSearchVisible, isLoading } from "../lib/store";
-  import { pb, courses, resources, currentUser } from "../lib/pocketbase";
+  import { courses, resources } from "../lib/db";
+  import { currentUser } from "../lib/authStore";
+  import { logout as firebaseLogout } from "../lib/auth";
   import { navigate, useLocation } from "svelte-routing";
   import { t } from "../lib/i18n";
 
@@ -22,8 +24,8 @@
     isSidebarVisible.set(false);
   }
 
-  function logout() {
-    pb.authStore.clear();
+  async function logout() {
+    await firebaseLogout();
     navigate("/login");
   }
 </script>
@@ -168,13 +170,13 @@
       <div class="flex items-center justify-between gap-5">
         <div class="flex items-center gap-2">
           <img
-            src={`https://api.dicebear.com/7.x/initials/svg?seed=${$currentUser.username}&backgroundColor=${mainColor}`}
-            alt={`${$currentUser.username}'s profile avatar`}
+            src={`https://api.dicebear.com/7.x/initials/svg?seed=${$currentUser.email}&backgroundColor=${mainColor}`}
+            alt={`${$currentUser.email}'s profile avatar`}
             class="h-8 w-8 rounded-full"
           />
           <div>
             <h3 class="line-clamp-1 truncate text-wrap break-all">
-              {$currentUser.username}
+              {$currentUser.displayName ?? $currentUser.email}
             </h3>
             <h4 class="line-clamp-1 truncate text-wrap break-all text-white/50">
               {$currentUser.email}

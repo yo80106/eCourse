@@ -1,6 +1,7 @@
 <script>
   import { onMount, onDestroy } from "svelte";
-  import { courses, lessons } from "../lib/pocketbase";
+  import { courses, lessons } from "../lib/db";
+  import { lessonSlug } from "../lib/strConverter";
   import { scale } from "svelte/transition";
   import Icon from "@iconify/svelte";
   import { isSearchVisible } from "../lib/store";
@@ -93,9 +94,7 @@
             {#if course.id === lesson.course}
               <button
                 on:click={() => {
-                  navigate(
-                    `/${slugify(lesson.title, { lower: true, strict: true })}`,
-                  );
+                  navigate(`/${lessonSlug(lesson)}`);
                   isSearchVisible.set(false);
                 }}
                 class="flex w-full items-center justify-between gap-5 rounded-md bg-transparent p-3 transition hover:bg-white/5"

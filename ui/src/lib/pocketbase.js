@@ -8,17 +8,12 @@ export const pb = new PocketBase(
     : import.meta.env.VITE_PROD_PB_URL,
 );
 
-export const currentUser = writable(pb.authStore.model);
 export const courses = writable([]);
 export const lessons = writable([]);
 export const progress = writable([]);
 export const resources = writable([]);
 export const lesson_faqs = writable([]);
 export const lesson_resources = writable([]);
-
-pb.authStore.onChange(() => {
-  currentUser.set(pb.authStore.model);
-});
 
 // function to fetch all the records from PocketBase
 export const fetchRecords = async () => {
