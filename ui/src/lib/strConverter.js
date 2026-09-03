@@ -1,12 +1,14 @@
 import slugify from "slugify";
 
-// slugify the lesson title for use in the URL, falling back to the Firestore
-// document ID when the title has no Latin-script characters to slugify (e.g.
-// Traditional Chinese titles) -- otherwise slugify() returns an empty string
-// and every such lesson's route collapses to "/", breaking navigation.
+// slugify the lesson title for use in the URL, always suffixed with the
+// Firestore document ID to guarantee uniqueness. slugify()'s charmap only
+// transliterates a handful of CJK characters (e.g. "元" -> "yuan") and drops
+// the rest under strict mode, so two unrelated Traditional Chinese titles
+// like "單元 1 - ..." and "單元 1 - ..." can both reduce to "yuan-1" -- the
+// id suffix is what actually keeps routes from colliding.
 export function lessonSlug(lesson) {
   const slug = slugify(lesson.title, { lower: true, strict: true });
-  return slug || lesson.id;
+  return slug ? `${slug}-${lesson.id}` : lesson.id;
 }
 
 // function to clean up the download file names from PB
