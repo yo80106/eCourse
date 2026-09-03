@@ -27,7 +27,7 @@
   $: currentCourseModules = currentCourseId
     ? $modules
         .filter((module) => module.course === currentCourseId)
-        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+        .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0))
     : [];
 
   $: currentCourseUngroupedLessons = currentCourseLessons.filter(

@@ -66,6 +66,12 @@ export const fetchRecords = async () => {
       moduleRecords = [];
     }
 
+    // sorted once here so every consumer (course list, sidebar contents,
+    // prev/next navigation) sees the same order without repeating this
+    // logic; lessons without a `sort` value fall to the end, keeping their
+    // relative fetch order (stable sort)
+    lessonRecords.sort((a, b) => (a.sort ?? Infinity) - (b.sort ?? Infinity));
+
     courses.set(courseRecords);
     modules.set(moduleRecords);
     lessons.set(lessonRecords);
