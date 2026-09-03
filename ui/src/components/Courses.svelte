@@ -2,6 +2,7 @@
   import {
     lessons,
     courses,
+    modules,
     progress,
     setCourseProgress,
     upsertLocalProgress,
@@ -32,6 +33,33 @@
         course: course.id,
         status: "Not Started",
       },
+    ]),
+  );
+
+  // chapter grouping is optional: a lesson without a `module` field just
+  // falls into the ungrouped bucket, same rendering as before modules existed
+  $: modulesByCourse = Object.fromEntries(
+    $courses.map((course) => [
+      course.id,
+      $modules
+        .filter((module) => module.course === course.id)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    ]),
+  );
+
+  $: lessonsByModule = Object.fromEntries(
+    $modules.map((module) => [
+      module.id,
+      $lessons.filter((lesson) => lesson.module === module.id),
+    ]),
+  );
+
+  $: ungroupedLessonsByCourse = Object.fromEntries(
+    $courses.map((course) => [
+      course.id,
+      $lessons.filter(
+        (lesson) => lesson.course === course.id && !lesson.module,
+      ),
     ]),
   );
 
@@ -275,9 +303,15 @@
             {/if}
           </div>
         </div>
-        {#each $lessons as lesson (lesson.id)}
-          {#if course.id === lesson.course}
-            {#if isOpen[course.id]}
+        {#if isOpen[course.id]}
+          {#each modulesByCourse[course.id] as module (module.id)}
+            <div
+              class="flex w-full items-center gap-2 border-t-[1.5px] border-t-white/10 bg-white/[0.02] px-5 py-3 text-xs tracking-[2px] text-white/50"
+            >
+              <Icon class="flex-shrink-0 text-base" icon="ph:folder-simple" />
+              {module.title}
+            </div>
+            {#each lessonsByModule[module.id] as lesson (lesson.id)}
               <div
                 class="flex w-full items-center justify-between gap-5 border-t-[1.5px] border-t-white/10 p-5"
               >
@@ -310,9 +344,43 @@
                   {$t("view")}</button
                 >
               </div>
-            {/if}
-          {/if}
-        {/each}
+            {/each}
+          {/each}
+          {#each ungroupedLessonsByCourse[course.id] as lesson (lesson.id)}
+            <div
+              class="flex w-full items-center justify-between gap-5 border-t-[1.5px] border-t-white/10 p-5"
+            >
+              <div class="flex items-center gap-3">
+                {#if lesson.driveFileId}
+                  <Icon
+                    class="flex-shrink-0 text-3xl text-main"
+                    icon="ph:video"
+                  />
+                {:else if lesson.content}
+                  <Icon
+                    class="flex-shrink-0 text-3xl text-main"
+                    icon="ph:text-align-left"
+                  />
+                {/if}
+                <h3
+                  class="line-clamp-1 truncate text-wrap break-all text-base"
+                >
+                  {lesson.title}
+                </h3>
+              </div>
+              <button
+                on:click={() =>
+                  navigate(
+                    `/${lessonSlug(lesson)}`,
+                  )}
+                class="flex items-center gap-2 p-2 text-white/50 transition hover:text-white"
+              >
+                <Icon class="flex-shrink-0 text-lg" icon="ph:eye" />
+                {$t("view")}</button
+              >
+            </div>
+          {/each}
+        {/if}
       </div>
     {/each}
   {/if}

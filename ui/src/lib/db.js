@@ -11,6 +11,7 @@ import { db, auth } from "./firebase";
 import { showAlert } from "./store";
 
 export const courses = writable([]);
+export const modules = writable([]);
 export const lessons = writable([]);
 export const progress = writable([]);
 export const resources = writable([]);
@@ -55,7 +56,18 @@ export const fetchRecords = async () => {
       }));
     }
 
+    // Optional chapter grouping: fetched outside the Promise.all above so a
+    // rules-deploy lag or missing collection can't take down course/lesson
+    // loading too -- it just falls back to the ungrouped view.
+    let moduleRecords = [];
+    try {
+      moduleRecords = await getCollectionRecords("modules");
+    } catch (error) {
+      moduleRecords = [];
+    }
+
     courses.set(courseRecords);
+    modules.set(moduleRecords);
     lessons.set(lessonRecords);
     progress.set(progressRecords);
     resources.set(resourceRecords);
