@@ -314,7 +314,7 @@
         {#if isOpen[course.id]}
           {#each modulesByCourse[course.id] as module (module.id)}
             <div
-              class="flex w-full items-center gap-2 border-t-[1.5px] border-t-white/10 bg-white/[0.02] px-5 py-3 text-xs tracking-[2px] text-white/50"
+              class="flex w-full items-center gap-2 border-t-[1.5px] border-t-white/10 bg-white/[0.02] px-5 py-3 text-sm tracking-[2px] text-white/50"
             >
               <Icon class="flex-shrink-0 text-base" icon="ph:folder-simple" />
               {module.title}

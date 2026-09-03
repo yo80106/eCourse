@@ -152,22 +152,39 @@
           </h3>
           <div>
             {#each currentCourseModules as module (module.id)}
-              <h4
-                class="line-clamp-1 truncate p-2 pb-1 text-start text-xs text-white/30"
-              >
-                {module.title}
-              </h4>
-              {#each lessonsForModule(module.id) as lesson (lesson.id)}
-                <button
-                  aria-hidden="true"
-                  on:click={() => navigate(`/${lessonSlug(lesson)}`)}
-                  class={lesson.id === currentLessonId
-                    ? "line-clamp-1 w-full truncate rounded-md bg-white/10 p-2 text-start text-white"
-                    : "line-clamp-1 w-full truncate rounded-md bg-transparent p-2 text-start text-white/50 transition hover:bg-white/10 hover:text-white"}
+              <div class="relative">
+                <h4
+                  class="flex items-center gap-2 p-2 pb-1 text-start text-sm text-white/40"
                 >
-                  {lesson.title}
-                </button>
-              {/each}
+                  <span
+                    class="flex h-4 w-4 flex-shrink-0 items-center justify-center"
+                  >
+                    <Icon class="text-base" icon="ph:folder-simple" />
+                  </span>
+                  <span class="line-clamp-1 truncate">{module.title}</span>
+                </h4>
+                {#if lessonsForModule(module.id).length > 0}
+                  <div
+                    class="pointer-events-none absolute bottom-4 left-4 top-8 w-px bg-white/10"
+                  ></div>
+                {/if}
+                {#each lessonsForModule(module.id) as lesson (lesson.id)}
+                  <button
+                    aria-hidden="true"
+                    on:click={() => navigate(`/${lessonSlug(lesson)}`)}
+                    class={lesson.id === currentLessonId
+                      ? "relative flex w-full items-center gap-2 truncate rounded-md bg-white/10 p-2 text-start text-white"
+                      : "relative flex w-full items-center gap-2 truncate rounded-md bg-transparent p-2 text-start text-white/50 transition hover:bg-white/10 hover:text-white"}
+                  >
+                    <span
+                      class="flex h-4 w-4 flex-shrink-0 items-center justify-center"
+                    >
+                      <Icon class="text-[8px]" icon="ph:circle" />
+                    </span>
+                    <span class="line-clamp-1 truncate">{lesson.title}</span>
+                  </button>
+                {/each}
+              </div>
             {/each}
             {#each currentCourseUngroupedLessons as lesson (lesson.id)}
               <button
