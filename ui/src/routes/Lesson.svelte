@@ -33,6 +33,8 @@
   let videoLoading = true;
   let currentCourseStatus = "";
   let currentLessonTitle = "";
+  let currentCourseId = "";
+  let currentLessonId = "";
 
   const lessonLocation = useLocation();
 
@@ -57,6 +59,8 @@
     );
     if (currentLesson) {
       currentLessonTitle = currentLesson.title;
+      currentLessonId = currentLesson.id;
+      currentCourseId = currentLesson.course;
       const currentCourse = $courses.find(
         (course) => course.id === currentLesson.course,
       );
@@ -178,7 +182,11 @@
 
 {#if $currentUser}
   <main class="flex h-dvh justify-between lg:overflow-x-hidden">
-    <Sidebar isCoursesVisible={false} />
+    <Sidebar
+      isCoursesVisible={false}
+      {currentCourseId}
+      {currentLessonId}
+    />
     {#if $isLoading}
       <div class="flex w-full flex-col gap-5 p-5">
         <div class="flex items-center gap-3">

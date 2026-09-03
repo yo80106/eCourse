@@ -35,6 +35,7 @@ export default {
     search: "Search",
     COURSES: "COURSES",
     RESOURCES: "RESOURCES",
+    COURSE_CONTENTS: "COURSE CONTENTS",
     completeCourse: "Complete Course",
     courseCompleted: "Course Completed",
     previousLesson: "Previous Lesson",

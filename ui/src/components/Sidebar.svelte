@@ -7,13 +7,36 @@
   import Icon from "@iconify/svelte";
   import { scrollToCourse } from "../lib/scroll";
   import { isSidebarVisible, isSearchVisible, isLoading } from "../lib/store";
-  import { courses, resources } from "../lib/db";
+  import { courses, resources, modules, lessons } from "../lib/db";
   import { currentUser } from "../lib/authStore";
   import { logout as firebaseLogout } from "../lib/auth";
   import { navigate, useLocation } from "svelte-routing";
+  import { lessonSlug } from "../lib/strConverter";
   import { t } from "../lib/i18n";
 
   export let isCoursesVisible = true;
+  // set from the Lesson page so the sidebar can show that course's outline;
+  // left empty everywhere else (e.g. MyCourses), which hides this section
+  export let currentCourseId = "";
+  export let currentLessonId = "";
+
+  $: currentCourseLessons = currentCourseId
+    ? $lessons.filter((lesson) => lesson.course === currentCourseId)
+    : [];
+
+  $: currentCourseModules = currentCourseId
+    ? $modules
+        .filter((module) => module.course === currentCourseId)
+        .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+    : [];
+
+  $: currentCourseUngroupedLessons = currentCourseLessons.filter(
+    (lesson) => !lesson.module,
+  );
+
+  function lessonsForModule(moduleId) {
+    return currentCourseLessons.filter((lesson) => lesson.module === moduleId);
+  }
 
   const { name, logo, logo_size } = customize;
   const { theme } = resolveConfig(tailwindConfig);
@@ -113,6 +136,48 @@
                 class="line-clamp-1 w-full truncate rounded-md bg-transparent p-2 text-start text-white/50 transition hover:bg-white/10 hover:text-white"
               >
                 {course.title}
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+
+      {#if !$isLoading && currentCourseId && currentCourseLessons.length > 0}
+        <div class="flex flex-col gap-2">
+          <h3
+            class="flex items-center gap-2 text-xs tracking-[2px] text-white/50"
+          >
+            <Icon class="flex-shrink-0 text-base" icon="ph:list-bullets" />
+            {$t("COURSE_CONTENTS")}
+          </h3>
+          <div>
+            {#each currentCourseModules as module (module.id)}
+              <h4
+                class="line-clamp-1 truncate p-2 pb-1 text-start text-xs text-white/30"
+              >
+                {module.title}
+              </h4>
+              {#each lessonsForModule(module.id) as lesson (lesson.id)}
+                <button
+                  aria-hidden="true"
+                  on:click={() => navigate(`/${lessonSlug(lesson)}`)}
+                  class={lesson.id === currentLessonId
+                    ? "line-clamp-1 w-full truncate rounded-md bg-white/10 p-2 text-start text-white"
+                    : "line-clamp-1 w-full truncate rounded-md bg-transparent p-2 text-start text-white/50 transition hover:bg-white/10 hover:text-white"}
+                >
+                  {lesson.title}
+                </button>
+              {/each}
+            {/each}
+            {#each currentCourseUngroupedLessons as lesson (lesson.id)}
+              <button
+                aria-hidden="true"
+                on:click={() => navigate(`/${lessonSlug(lesson)}`)}
+                class={lesson.id === currentLessonId
+                  ? "line-clamp-1 w-full truncate rounded-md bg-white/10 p-2 text-start text-white"
+                  : "line-clamp-1 w-full truncate rounded-md bg-transparent p-2 text-start text-white/50 transition hover:bg-white/10 hover:text-white"}
+              >
+                {lesson.title}
               </button>
             {/each}
           </div>
