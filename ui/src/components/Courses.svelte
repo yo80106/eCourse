@@ -36,6 +36,14 @@
     ]),
   );
 
+  // pin In Progress courses to the top so students land on what they're
+  // already partway through; stable sort keeps everything else in place
+  $: sortedCourses = [...$courses].sort((a, b) => {
+    const aInProgress = progressByCourse[a.id]?.status === "In Progress";
+    const bInProgress = progressByCourse[b.id]?.status === "In Progress";
+    return (aInProgress ? 0 : 1) - (bInProgress ? 0 : 1);
+  });
+
   // chapter grouping is optional: a lesson without a `module` field just
   // falls into the ungrouped bucket, same rendering as before modules existed
   $: modulesByCourse = Object.fromEntries(
@@ -222,7 +230,7 @@
       </div>
     </div>
   {:else}
-    {#each $courses as course (course.id)}
+    {#each sortedCourses as course (course.id)}
       <div
         id={course.id}
         class={isOpen[course.id]
