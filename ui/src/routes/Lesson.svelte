@@ -4,6 +4,7 @@
   import { quintOut } from "svelte/easing";
   import {
     lessons,
+    modules,
     courses,
     progress,
     lesson_faqs,
@@ -77,9 +78,23 @@
     }
   }
 
-  // function to get lessons of the current course
+  // function to get lessons of the current course, in the same order
+  // Sidebar.svelte displays them: grouped by module (module.sort order),
+  // then ungrouped lessons -- `sort` restarts at 1 within each module, so a
+  // flat filter of $lessons interleaves modules instead of matching what's
+  // shown in the sidebar.
   function getCourseLessons(courseId) {
-    return $lessons.filter((lesson) => lesson.course === courseId);
+    const courseLessons = $lessons.filter((lesson) => lesson.course === courseId);
+    const courseModules = $modules
+      .filter((module) => module.course === courseId)
+      .sort((a, b) => (a.sort ?? 0) - (b.sort ?? 0));
+
+    const groupedLessons = courseModules.flatMap((module) =>
+      courseLessons.filter((lesson) => lesson.module === module.id),
+    );
+    const ungroupedLessons = courseLessons.filter((lesson) => !lesson.module);
+
+    return [...groupedLessons, ...ungroupedLessons];
   }
 
   // function to find the index of the current lesson within its course
