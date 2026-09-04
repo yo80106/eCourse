@@ -68,13 +68,6 @@ function matchSrt(videoFile, srtFiles) {
   return null;
 }
 
-function transcriptDownload(srtFile) {
-  return {
-    name: '逐字稿',
-    link: `https://drive.google.com/file/d/${srtFile.id}/view`,
-  };
-}
-
 // ---- 舊流程：單一資料夾內影片檔名 = lesson 名稱，無 module，無大綱 ----
 async function runFlatMode(args) {
   const folderId = args.folder || GDRIVE_FOLDER_ID;
@@ -256,7 +249,6 @@ async function runOutlineMode(args) {
         sort: lesson.sort,
         driveFileId: file.id,
         module: moduleIdByTitle[lesson.moduleTitle],
-        downloads: srtMatch ? [transcriptDownload(srtMatch.file)] : undefined,
       });
 
       console.log(

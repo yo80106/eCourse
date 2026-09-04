@@ -66,8 +66,8 @@ async function findLessonByTitle(courseId, title) {
 }
 
 // 只回傳「打算做什麼」，不實際寫入 Firestore；實際寫入交給 index.js 依 dry-run / --apply 決定
-// module/downloads 只在 CREATE 時寫入；既有文件走 UPDATE 只補 driveFileId，不覆蓋手動填的欄位
-async function upsertLesson({ courseId, title, sort, driveFileId, module, downloads }) {
+// module 只在 CREATE 時寫入；既有文件走 UPDATE 只補 driveFileId，不覆蓋手動填的欄位
+async function upsertLesson({ courseId, title, sort, driveFileId, module }) {
   const byDriveId = await findLessonByDriveId(courseId, driveFileId);
   if (byDriveId) {
     return {
@@ -89,7 +89,6 @@ async function upsertLesson({ courseId, title, sort, driveFileId, module, downlo
 
   const data = { course: courseId, title, sort, driveFileId };
   if (module) data.module = module;
-  if (downloads) data.downloads = downloads;
 
   return {
     action: 'CREATE',
