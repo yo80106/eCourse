@@ -39,10 +39,40 @@
   // pin In Progress courses to the top so students land on what they're
   // already partway through; stable sort keeps everything else in place
   $: sortedCourses = [...$courses].sort((a, b) => {
-    const aInProgress = progressByCourse[a.id]?.status === "In Progress";
-    const bInProgress = progressByCourse[b.id]?.status === "In Progress";
+    const aInProgress = statusByCourse[a.id] === "In Progress";
+    const bInProgress = statusByCourse[b.id] === "In Progress";
     return (aInProgress ? 0 : 1) - (bInProgress ? 0 : 1);
   });
+
+  $: lessonCountByCourse = Object.fromEntries(
+    $courses.map((course) => [
+      course.id,
+      $lessons.filter((lesson) => lesson.course === course.id).length,
+    ]),
+  );
+
+  $: completedCountByCourse = Object.fromEntries(
+    $courses.map((course) => [
+      course.id,
+      progressByCourse[course.id]?.completedLessons?.length ?? 0,
+    ]),
+  );
+
+  // "Completed" is derived, not a separately-set status: a course counts as
+  // completed once every one of its lessons has been checked off. There's no
+  // manual "Complete Course" action, so a course can never be "Completed"
+  // with lessons left unchecked.
+  $: statusByCourse = Object.fromEntries(
+    $courses.map((course) => {
+      const total = lessonCountByCourse[course.id];
+      const completedLessonCount = completedCountByCourse[course.id];
+      const status =
+        total > 0 && completedLessonCount === total
+          ? "Completed"
+          : (progressByCourse[course.id]?.status ?? "Not Started");
+      return [course.id, status];
+    }),
+  );
 
   // chapter grouping is optional: a lesson without a `module` field just
   // falls into the ungrouped bucket, same rendering as before modules existed
@@ -136,16 +166,15 @@
 
   // function to reset the status of a course back to "Not Started"
   async function resetProgress(courseId) {
-    const progressRecord = progressByCourse[courseId];
-
     if (
-      progressRecord.status === "Completed" ||
-      progressRecord.status === "In Progress"
+      statusByCourse[courseId] === "Completed" ||
+      statusByCourse[courseId] === "In Progress"
     ) {
       loading[courseId] = true;
       const updatedProgressRecord = await setCourseProgress(
         courseId,
         "Not Started",
+        [],
       );
 
       if (!updatedProgressRecord) {
@@ -251,30 +280,35 @@
               class="flex items-center gap-3 sm:w-full xs:flex-col xs:items-start"
             >
               <h3
-                class={progressByCourse[course.id].status === "Completed"
+                class={statusByCourse[course.id] === "Completed"
                   ? "rounded-full bg-emerald-400/10 px-3 py-1 text-emerald-400/70"
-                  : progressByCourse[course.id].status === "In Progress"
+                  : statusByCourse[course.id] === "In Progress"
                     ? "rounded-full bg-amber-400/10 px-3 py-1 text-amber-400/70"
                     : "rounded-full bg-white/10 px-3 py-1 text-white/70"}
               >
-                {progressByCourse[course.id].status === "Completed"
+                {statusByCourse[course.id] === "Completed"
                   ? $t("completed")
-                  : progressByCourse[course.id].status === "In Progress"
+                  : statusByCourse[course.id] === "In Progress"
                     ? $t("inProgress")
                     : $t("notStarted")}
               </h3>
               <h3 class="flex items-center gap-2 text-white/50">
                 <Icon class="flex-shrink-0 text-lg" icon="ph:book-open" />
-                {$lessons.filter((lesson) => lesson.course === course.id)
-                  .length}
-                {$lessons.filter((lesson) => lesson.course === course.id)
-                  .length === 1
+                {lessonCountByCourse[course.id]}
+                {lessonCountByCourse[course.id] === 1
                   ? $t("lessonInThisCourse")
                   : $t("lessonsInThisCourse")}
+                {#if statusByCourse[course.id] === "In Progress"}
+                  ·
+                  {$t("completedCount", {
+                    completed: completedCountByCourse[course.id],
+                    total: lessonCountByCourse[course.id],
+                  })}
+                {/if}
               </h3>
             </div>
             <div class="flex items-center gap-3 sm:w-full">
-              {#if progressByCourse[course.id].status === "Completed" || progressByCourse[course.id].status === "In Progress"}
+              {#if statusByCourse[course.id] === "Completed" || statusByCourse[course.id] === "In Progress"}
                 <button
                   on:click|stopPropagation
                   on:click={() => resetProgress(course.id)}
@@ -294,9 +328,9 @@
                 on:click|stopPropagation
                 on:click={() => goToFirstLessonOfCourse(course.id)}
                 class="line-clamp-1 truncate rounded-md bg-white/10 px-4 py-2 outline outline-[1.5px] outline-white/20 transition hover:bg-white/20 sm:w-full sm:flex-1 sm:px-0"
-                >{progressByCourse[course.id].status === "Completed"
+                >{statusByCourse[course.id] === "Completed"
                   ? $t("openCourse")
-                  : progressByCourse[course.id].status === "In Progress"
+                  : statusByCourse[course.id] === "In Progress"
                     ? $t("continueCourse")
                     : $t("startCourse")}</button
               >
@@ -346,10 +380,25 @@
                     navigate(
                       `/${lessonSlug(lesson)}`,
                     )}
-                  class="flex items-center gap-2 p-2 text-white/50 transition hover:text-white"
+                  class={progressByCourse[lesson.course]?.completedLessons?.includes(
+                    lesson.id,
+                  )
+                    ? "flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-1 text-emerald-400/70 transition hover:bg-emerald-400/20"
+                    : "flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-white/50 transition hover:bg-white/20"}
                 >
-                  <Icon class="flex-shrink-0 text-lg" icon="ph:eye" />
-                  {$t("view")}</button
+                  <Icon
+                    class="flex-shrink-0 text-lg"
+                    icon={progressByCourse[lesson.course]?.completedLessons?.includes(
+                      lesson.id,
+                    )
+                      ? "ph:check-circle"
+                      : "ph:circle"}
+                  />
+                  {progressByCourse[lesson.course]?.completedLessons?.includes(
+                    lesson.id,
+                  )
+                    ? $t("completed")
+                    : $t("notStarted")}</button
                 >
               </div>
             {/each}
@@ -381,10 +430,25 @@
                   navigate(
                     `/${lessonSlug(lesson)}`,
                   )}
-                class="flex items-center gap-2 p-2 text-white/50 transition hover:text-white"
+                class={progressByCourse[lesson.course]?.completedLessons?.includes(
+                  lesson.id,
+                )
+                  ? "flex items-center gap-2 rounded-full bg-emerald-400/10 px-3 py-1 text-emerald-400/70 transition hover:bg-emerald-400/20"
+                  : "flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-white/50 transition hover:bg-white/20"}
               >
-                <Icon class="flex-shrink-0 text-lg" icon="ph:eye" />
-                {$t("view")}</button
+                <Icon
+                  class="flex-shrink-0 text-lg"
+                  icon={progressByCourse[lesson.course]?.completedLessons?.includes(
+                    lesson.id,
+                  )
+                    ? "ph:check-circle"
+                    : "ph:circle"}
+                />
+                {progressByCourse[lesson.course]?.completedLessons?.includes(
+                  lesson.id,
+                )
+                  ? $t("completed")
+                  : $t("notStarted")}</button
               >
             </div>
           {/each}

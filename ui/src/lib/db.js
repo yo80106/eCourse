@@ -1,4 +1,4 @@
-import { writable } from "svelte/store";
+import { writable, get } from "svelte/store";
 import {
   collection,
   getDocs,
@@ -91,16 +91,25 @@ export const fetchRecords = async () => {
 // Doc ID is deterministic (`{uid}_{courseId}`) rather than auto-generated, so
 // there is exactly one progress doc per (user, course) -- this is also
 // enforced at the firestore.rules layer, closing off unbounded doc creation.
-export const setCourseProgress = async (courseId, newStatus) => {
+//
+// `completedLessons` is optional: omit it to leave whichever lessons were
+// already checked off untouched (write uses merge: true), or pass an array
+// (including []) to explicitly set it -- e.g. Reset Progress clears it.
+export const setCourseProgress = async (courseId, newStatus, completedLessons) => {
   try {
     const uid = auth.currentUser.uid;
     const progressId = `${uid}_${courseId}`;
-    await setDoc(doc(db, "progress", progressId), {
-      userId: uid,
-      course: courseId,
-      status: newStatus,
-    });
-    return { id: progressId, userId: uid, course: courseId, status: newStatus };
+    const existing = get(progress).find((record) => record.course === courseId);
+    const resolvedCompletedLessons =
+      completedLessons !== undefined ? completedLessons : existing?.completedLessons;
+
+    const payload = { userId: uid, course: courseId, status: newStatus };
+    if (resolvedCompletedLessons !== undefined) {
+      payload.completedLessons = resolvedCompletedLessons;
+    }
+
+    await setDoc(doc(db, "progress", progressId), payload, { merge: true });
+    return { id: progressId, ...payload };
   } catch (error) {
     showAlert("Failed to update course status. Please try again", "fail");
     return null;

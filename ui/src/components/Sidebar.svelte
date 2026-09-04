@@ -7,7 +7,7 @@
   import Icon from "@iconify/svelte";
   import { scrollToCourse } from "../lib/scroll";
   import { isSidebarVisible, isSearchVisible, isLoading } from "../lib/store";
-  import { courses, resources, modules, lessons } from "../lib/db";
+  import { courses, resources, modules, lessons, progress } from "../lib/db";
   import { currentUser } from "../lib/authStore";
   import { logout as firebaseLogout } from "../lib/auth";
   import { navigate, useLocation } from "svelte-routing";
@@ -33,6 +33,11 @@
   $: currentCourseUngroupedLessons = currentCourseLessons.filter(
     (lesson) => !lesson.module,
   );
+
+  $: currentCourseCompletedLessons = currentCourseId
+    ? ($progress.find((record) => record.course === currentCourseId)
+        ?.completedLessons ?? [])
+    : [];
 
   function lessonsForModule(moduleId) {
     return currentCourseLessons.filter((lesson) => lesson.module === moduleId);
@@ -179,7 +184,18 @@
                     <span
                       class="flex h-4 w-4 flex-shrink-0 items-center justify-center"
                     >
-                      <Icon class="text-[8px]" icon="ph:circle" />
+                      <Icon
+                        class={currentCourseCompletedLessons.includes(
+                          lesson.id,
+                        )
+                          ? "text-[8px] text-emerald-400"
+                          : "text-[8px]"}
+                        icon={currentCourseCompletedLessons.includes(
+                          lesson.id,
+                        )
+                          ? "ph:circle-fill"
+                          : "ph:circle"}
+                      />
                     </span>
                     <span class="line-clamp-1 truncate">{lesson.title}</span>
                   </button>
@@ -191,10 +207,22 @@
                 aria-hidden="true"
                 on:click={() => navigate(`/${lessonSlug(lesson)}`)}
                 class={lesson.id === currentLessonId
-                  ? "line-clamp-1 w-full truncate rounded-md bg-white/10 p-2 text-start text-white"
-                  : "line-clamp-1 w-full truncate rounded-md bg-transparent p-2 text-start text-white/50 transition hover:bg-white/10 hover:text-white"}
+                  ? "flex w-full items-center gap-2 truncate rounded-md bg-white/10 p-2 text-start text-white"
+                  : "flex w-full items-center gap-2 truncate rounded-md bg-transparent p-2 text-start text-white/50 transition hover:bg-white/10 hover:text-white"}
               >
-                {lesson.title}
+                <span
+                  class="flex h-4 w-4 flex-shrink-0 items-center justify-center"
+                >
+                  <Icon
+                    class={currentCourseCompletedLessons.includes(lesson.id)
+                      ? "text-[8px] text-emerald-400"
+                      : "text-[8px]"}
+                    icon={currentCourseCompletedLessons.includes(lesson.id)
+                      ? "ph:circle-fill"
+                      : "ph:circle"}
+                  />
+                </span>
+                <span class="line-clamp-1 truncate">{lesson.title}</span>
               </button>
             {/each}
           </div>

@@ -29,9 +29,9 @@
   import { t } from "../lib/i18n";
   export let lessonTitle;
 
-  let loading = {};
+  let lessonLoading = {};
   let videoLoading = true;
-  let currentCourseStatus = "";
+  let currentCompletedLessons = [];
   let currentLessonTitle = "";
   let currentCourseId = "";
   let currentLessonId = "";
@@ -69,7 +69,9 @@
           (progressRecord) => progressRecord.course === currentCourse.id,
         );
         if (currentStatus) {
-          currentCourseStatus = currentStatus.status;
+          currentCompletedLessons = currentStatus.completedLessons ?? [];
+        } else {
+          currentCompletedLessons = [];
         }
       }
     }
@@ -135,46 +137,43 @@
     }
   }
 
-  // function to mark a course as completed (creates the progress record if
-  // the student hasn't started/touched it yet -- self-directed learning has
-  // no auto-assigned progress)
-  async function completeCourse(lessonId) {
-    const currentLesson = $lessons.find(
-      (lesson) =>
-        lessonSlug(lesson) === lessonTitle,
-    );
-    const currentCourse = $courses.find(
-      (course) => course.id === currentLesson.course,
-    );
+  // toggle an individual lesson's completed checkmark. Course completion is
+  // derived (all lessons checked = course completed, see Courses.svelte)
+  // rather than a separate manual status, so this is the only completion
+  // action left on this page. Clicking again un-checks it.
+  async function toggleLessonCompletion(lessonId, courseId) {
+    const isCompleted = currentCompletedLessons.includes(lessonId);
+    const updatedCompletedLessons = isCompleted
+      ? currentCompletedLessons.filter((id) => id !== lessonId)
+      : [...currentCompletedLessons, lessonId];
 
-    if (currentCourseStatus === "Completed") {
-      return;
-    }
-
-    loading[lessonId] = true;
+    lessonLoading[lessonId] = true;
+    // checking/unchecking a lesson always implies the course is at least
+    // "In Progress" -- writing this unconditionally (rather than reusing
+    // whatever status the doc already had) is what makes a course that was
+    // previously reset back to "Not Started" flip forward again the moment
+    // its student marks any lesson complete.
     const updatedProgressRecord = await setCourseProgress(
-      currentCourse.id,
-      "Completed",
+      courseId,
+      "In Progress",
+      updatedCompletedLessons,
     );
-
-    if (!updatedProgressRecord) {
-      loading[lessonId] = false;
-    }
 
     if (updatedProgressRecord) {
       await tick();
-
       upsertLocalProgress(updatedProgressRecord);
 
-      loading[lessonId] = false;
-
-      navigate("/");
-
-      showAlert(
-        `${currentCourse.title.length > 30 ? currentCourse.title.slice(0, 30) + "..." : currentCourse.title} completed successfully`,
-        "success",
-      );
+      const totalLessons = getCourseLessons(courseId).length;
+      if (!isCompleted && updatedCompletedLessons.length === totalLessons) {
+        const course = $courses.find((c) => c.id === courseId);
+        showAlert(
+          `${course.title.length > 30 ? course.title.slice(0, 30) + "..." : course.title} completed successfully`,
+          "success",
+        );
+      }
     }
+
+    lessonLoading[lessonId] = false;
   }
 </script>
 
@@ -262,27 +261,7 @@
                       </button>
                     {/if}
 
-                    {#if findCurrentLessonIndex(getCourseLessons($lessons.find((lesson) => lessonSlug(lesson) === lessonTitle).course)) >= getCourseLessons($lessons.find((lesson) => lessonSlug(lesson) === lessonTitle).course).length - 1}
-                      <button
-                        on:click={() => completeCourse(lesson.id)}
-                        class={loading[lesson.id] ||
-                        currentCourseStatus === "Completed"
-                          ? "pointer-events-none line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md bg-emerald-400/60 px-4 py-2 opacity-50 transition hover:bg-emerald-400/50 sm:order-first sm:w-full"
-                          : "line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md bg-emerald-400/60 px-4 py-2 transition hover:bg-emerald-400/50 sm:order-first sm:w-full"}
-                      >
-                        {currentCourseStatus === "Completed"
-                          ? $t("courseCompleted")
-                          : $t("completeCourse")}
-                        {#if loading[lesson.id]}
-                          <Icon
-                            class="flex-shrink-0 animate-spin text-base"
-                            icon="fluent:spinner-ios-16-regular"
-                          />
-                        {:else}
-                          <Icon class="flex-shrink-0" icon="ph:check" />
-                        {/if}
-                      </button>
-                    {:else}
+                    {#if findCurrentLessonIndex(getCourseLessons($lessons.find((lesson) => lessonSlug(lesson) === lessonTitle).course)) < getCourseLessons($lessons.find((lesson) => lessonSlug(lesson) === lessonTitle).course).length - 1}
                       <button
                         on:click={goToNextLesson}
                         class="line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md bg-main px-4 py-2 transition hover:bg-main/80 sm:order-first sm:w-full"
@@ -435,6 +414,31 @@
                   {/each}
                 </div>
               {/if}
+            </div>
+
+            <div
+              class="flex w-full items-center justify-center border-t-[1.5px] border-t-white/10 pt-5"
+            >
+              <button
+                on:click={() => toggleLessonCompletion(lesson.id, lesson.course)}
+                class={lessonLoading[lesson.id]
+                  ? "pointer-events-none line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md bg-emerald-400/60 px-4 py-2 opacity-50 transition hover:bg-emerald-400/50 sm:w-full"
+                  : currentCompletedLessons.includes(lesson.id)
+                    ? "line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md bg-emerald-400/60 px-4 py-2 transition hover:bg-emerald-400/50 sm:w-full"
+                    : "line-clamp-1 flex items-center justify-center gap-2 truncate rounded-md bg-white/10 px-4 py-2 outline outline-[1.5px] outline-white/20 transition hover:bg-white/20 sm:w-full"}
+              >
+                {currentCompletedLessons.includes(lesson.id)
+                  ? $t("lessonCompleted")
+                  : $t("completeLesson")}
+                {#if lessonLoading[lesson.id]}
+                  <Icon
+                    class="flex-shrink-0 animate-spin text-base"
+                    icon="fluent:spinner-ios-16-regular"
+                  />
+                {:else}
+                  <Icon class="flex-shrink-0" icon="ph:check" />
+                {/if}
+              </button>
             </div>
           </section>
         {/if}

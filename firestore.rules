@@ -82,14 +82,16 @@ service cloud.firestore {
         && request.resource.data.course.size() > 0
         && request.resource.data.course.size() < 200
         && request.resource.data.status in ["Not Started", "In Progress", "Completed"]
-        && request.resource.data.keys().hasOnly(["userId", "course", "status"]);
+        && request.resource.data.keys().hasOnly(["userId", "course", "status", "completedLessons"])
+        && (!("completedLessons" in request.resource.data) || request.resource.data.completedLessons is list);
 
       allow update: if isSignedIn()
         && resource.data.userId == request.auth.uid
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.course == resource.data.course
         && request.resource.data.status in ["Not Started", "In Progress", "Completed"]
-        && request.resource.data.keys().hasOnly(["userId", "course", "status"]);
+        && request.resource.data.keys().hasOnly(["userId", "course", "status", "completedLessons"])
+        && (!("completedLessons" in request.resource.data) || request.resource.data.completedLessons is list);
     }
   }
 }
