@@ -170,7 +170,7 @@
                 </h4>
                 {#if lessonsForModule(module.id).length > 0}
                   <div
-                    class="pointer-events-none absolute bottom-4 left-4 top-8 w-px bg-white/10"
+                    class="pointer-events-none absolute bottom-4 left-4 top-8 w-0.5 -translate-x-1/2 bg-white/25"
                   ></div>
                 {/if}
                 {#each lessonsForModule(module.id) as lesson (lesson.id)}
@@ -188,13 +188,9 @@
                         class={currentCourseCompletedLessons.includes(
                           lesson.id,
                         )
-                          ? "text-[8px] text-emerald-400"
-                          : "text-[8px]"}
-                        icon={currentCourseCompletedLessons.includes(
-                          lesson.id,
-                        )
-                          ? "ph:circle-fill"
-                          : "ph:circle"}
+                          ? "text-xs text-emerald-400"
+                          : "text-xs text-slate-400"}
+                        icon="ph:circle-fill"
                       />
                     </span>
                     <span class="line-clamp-1 truncate">{lesson.title}</span>
@@ -215,11 +211,9 @@
                 >
                   <Icon
                     class={currentCourseCompletedLessons.includes(lesson.id)
-                      ? "text-[8px] text-emerald-400"
-                      : "text-[8px]"}
-                    icon={currentCourseCompletedLessons.includes(lesson.id)
-                      ? "ph:circle-fill"
-                      : "ph:circle"}
+                      ? "text-xs text-emerald-400"
+                      : "text-xs text-slate-400"}
+                    icon="ph:circle-fill"
                   />
                 </span>
                 <span class="line-clamp-1 truncate">{lesson.title}</span>

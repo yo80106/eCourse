@@ -306,9 +306,15 @@
                     title={lesson.title}
                     src={`https://drive.google.com/file/d/${lesson.driveFileId}/preview`}
                     class="absolute inset-0 h-full w-full"
-                    allow="autoplay"
+                    allow="autoplay; fullscreen"
+                    allowfullscreen
                     on:load={() => (videoLoading = false)}
                   ></iframe>
+                  <!-- Google Drive 內建 pop-out（另開視窗）按鈕固定在右上角、無 URL 參數可關閉，用透明遮罩擋掉點擊，其餘區域（含全螢幕按鈕）不受影響 -->
+                  <div
+                    class="absolute right-0 top-0 z-10 h-14 w-14"
+                    aria-hidden="true"
+                  ></div>
                 </div>
               {/if}
 
