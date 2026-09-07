@@ -258,7 +258,7 @@
         </div>
       {/if}
     </div>
-    {#if $isLoading}
+    {#if $isLoading || !$currentUser}
       <div class="flex w-full items-center gap-3">
         <div class="animate-pulse rounded-full bg-white/10 p-4"></div>
         <div class="flex-1 space-y-3">
