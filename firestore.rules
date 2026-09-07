@@ -21,24 +21,40 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/invitedEmails/$(request.auth.token.email.lower()));
     }
 
+    // Same document as isInvited() -- Firestore caches get()/exists() calls
+    // to the same path within one rule evaluation, so calling both costs one
+    // read, not two.
+    function invitedEmailData() {
+      return get(/databases/$(database)/documents/invitedEmails/$(request.auth.token.email.lower())).data;
+    }
+
+    // invitedEmails/{email} has no `courses` field == full catalog access
+    // (back-compat default: existing invited users see everything, same as
+    // before this field existed). Once an admin sets `courses` to an array,
+    // that email is scoped to just those courseIds.
+    function canSeeCourse(courseId) {
+      let invite = invitedEmailData();
+      return !("courses" in invite) || courseId in invite.courses;
+    }
+
     // Course content is curated by the admin outside the app (Firebase
     // Console or a script using the Admin SDK, which bypasses these rules).
     // Only invited users may read the catalog; the client never writes to
     // these collections.
     match /courses/{courseId} {
-      allow read: if isInvited();
+      allow read: if isInvited() && canSeeCourse(courseId);
       allow write: if false;
     }
 
     match /lessons/{lessonId} {
-      allow read: if isInvited();
+      allow read: if isInvited() && canSeeCourse(resource.data.course);
       allow write: if false;
     }
 
     // Optional chapter grouping within a course. A lesson without a
     // `module` field just renders ungrouped, same as before this existed.
     match /modules/{moduleId} {
-      allow read: if isInvited();
+      allow read: if isInvited() && canSeeCourse(resource.data.course);
       allow write: if false;
     }
 
