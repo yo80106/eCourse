@@ -2,6 +2,7 @@ const { db } = require('./config');
 
 const INVITED_EMAILS_COLLECTION = 'invitedEmails';
 const COURSES_COLLECTION = 'courses';
+const ASSIGNED_SUBCOLLECTION = 'assigned';
 
 function usage() {
   console.log(`
@@ -9,15 +10,26 @@ function usage() {
 
 指令：
   list                          列出所有受邀 email
-  list-courses                  列出所有課程 courseId + title
+  list-courses                  列出所有課程 courseId + title + restricted 狀態
   invite <email>                新增受邀 email（不影響已存在的文件）
   show <email>                  顯示單一 email 是否在受邀名單中
 
-注意：受邀者一律可見全部課程。「限縮特定課程」曾經嘗試過（invitedEmails.courses
-與 courses.visibleTo 兩種寫法都試過），但已證實 Firestore rules 引擎對
-「陣列成員比對 + 未加過濾的 list 查詢」不會逐筆過濾（2026-09-07 用 production
-Firestore REST API 驗證：單筆 getDoc 正確擋絕，但 getDocs/runQuery 完全不過濾），
-所以這個功能目前無法用 Firestore rules 實作，已移除相關指令。
+  migrate-restrict-all          一次性：把所有還沒有 restricted 欄位的課程設為
+                                 restricted: true（新版可見性控制的必要 migration，
+                                 執行前請見下方說明）
+  restrict <courseId>           把課程設為 restricted: true（限制，只有 assigned 名單能看）
+  open <courseId>                把課程設為 restricted: false（開放，所有受邀者都能看）
+  assign <courseId> <email>      把 email 加進該課程的 assigned 名單
+  unassign <courseId> <email>    把 email 從該課程的 assigned 名單移除
+  list-assigned <courseId>       列出該課程 assigned 名單
+
+課程可見性控制（第三版，2026-09-08）：courses 一律要有明確的 restricted 欄位
+（true=限制／false=開放），沒有「欄位不存在＝開放」這種預設，因為 Firestore 的
+list() 查詢只能可靠地對純量欄位做相等比對過濾，做不到「欄位不存在」這種條件。
+courses 預設 restricted: true——新建課程、或還沒跑過 migrate-restrict-all 的
+既有課程，在受邀者眼中都是「看不到」，直到手動 assign 或 open 為止。
+lessons/modules 維持不過濾，只有 courses 這層有限制（防君子不防小人，細節見
+Efforts/Projects/Active/個人-線上課程平台專案）。
 `);
 }
 
@@ -43,8 +55,83 @@ async function listCourses() {
     return;
   }
   snap.docs.forEach((doc) => {
-    console.log(`${doc.id}  -  ${doc.data().title ?? '(無 title)'}`);
+    const data = doc.data();
+    const status =
+      !('restricted' in data)
+        ? '(尚未設定 restricted，受邀者一律看不到，先跑 migrate-restrict-all)'
+        : data.restricted
+          ? 'restricted'
+          : 'open';
+    console.log(`${doc.id}  -  ${data.title ?? '(無 title)'}  [${status}]`);
   });
+}
+
+async function migrateRestrictAll() {
+  const snap = await db.collection(COURSES_COLLECTION).get();
+  const toMigrate = snap.docs.filter((doc) => !('restricted' in doc.data()));
+  if (toMigrate.length === 0) {
+    console.log('所有課程都已經有 restricted 欄位，不用 migrate。');
+    return;
+  }
+  const batch = db.batch();
+  toMigrate.forEach((doc) => {
+    batch.update(doc.ref, { restricted: true });
+  });
+  await batch.commit();
+  console.log(`已把 ${toMigrate.length} 門課設為 restricted: true：`);
+  toMigrate.forEach((doc) => console.log(`  ${doc.id}  -  ${doc.data().title ?? '(無 title)'}`));
+  console.log('\n這些課程在手動 assign 或 open 之前，受邀者都看不到，請確認這是預期行為。');
+}
+
+async function setRestricted(courseId, restricted) {
+  if (!courseId) return usage();
+  const ref = db.collection(COURSES_COLLECTION).doc(courseId);
+  const existing = await ref.get();
+  if (!existing.exists) {
+    console.log(`找不到課程 ${courseId}。`);
+    return;
+  }
+  await ref.update({ restricted });
+  console.log(`已把課程 ${courseId} 設為 restricted: ${restricted}`);
+}
+
+async function assign(courseId, email) {
+  if (!courseId || !email) return usage();
+  const courseRef = db.collection(COURSES_COLLECTION).doc(courseId);
+  const existing = await courseRef.get();
+  if (!existing.exists) {
+    console.log(`找不到課程 ${courseId}。`);
+    return;
+  }
+  const id = docId(email);
+  await courseRef.collection(ASSIGNED_SUBCOLLECTION).doc(id).set({ email: id });
+  console.log(`已把 ${id} 加進課程 ${courseId} 的 assigned 名單。`);
+}
+
+async function unassign(courseId, email) {
+  if (!courseId || !email) return usage();
+  const id = docId(email);
+  await db
+    .collection(COURSES_COLLECTION)
+    .doc(courseId)
+    .collection(ASSIGNED_SUBCOLLECTION)
+    .doc(id)
+    .delete();
+  console.log(`已把 ${id} 從課程 ${courseId} 的 assigned 名單移除。`);
+}
+
+async function listAssigned(courseId) {
+  if (!courseId) return usage();
+  const snap = await db
+    .collection(COURSES_COLLECTION)
+    .doc(courseId)
+    .collection(ASSIGNED_SUBCOLLECTION)
+    .get();
+  if (snap.empty) {
+    console.log(`課程 ${courseId} 目前沒有任何 assigned email。`);
+    return;
+  }
+  snap.docs.forEach((doc) => console.log(doc.id));
 }
 
 async function invite(email) {
@@ -79,6 +166,18 @@ async function main() {
       return invite(rest[0]);
     case 'show':
       return show(rest[0]);
+    case 'migrate-restrict-all':
+      return migrateRestrictAll();
+    case 'restrict':
+      return setRestricted(rest[0], true);
+    case 'open':
+      return setRestricted(rest[0], false);
+    case 'assign':
+      return assign(rest[0], rest[1]);
+    case 'unassign':
+      return unassign(rest[0], rest[1]);
+    case 'list-assigned':
+      return listAssigned(rest[0]);
     default:
       return usage();
   }

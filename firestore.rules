@@ -26,22 +26,52 @@ service cloud.firestore {
     // Only invited users may read the catalog; the client never writes to
     // these collections.
     //
-    // Per-course visibility (restricting which invited users see which
-    // courses) was attempted twice here -- both via invitedEmails.courses
-    // (cross-document get() + per-document array check) and via a
-    // resource.data.visibleTo field on the course itself -- and both were
-    // confirmed broken against real production Firestore (2026-09-07): a
-    // rule combining an array-membership check ("x in someArray") with an
-    // unfiltered list()/getDocs() query does not filter results at all, it
-    // just returns every document regardless of the check, while a
-    // single-document get() against the exact same rule correctly denies.
-    // Verified via raw Firestore REST calls (runQuery vs. single get),
-    // independent of the SDK/emulator. So this is a hard Firestore rules
-    // engine limitation, not a data-modeling choice -- course-level
-    // visibility scoping isn't enforceable this way and was reverted.
+    // Per-course visibility -- third attempt (2026-09-08). The first two
+    // (invitedEmails.courses via get(), courses.visibleTo array on the
+    // course itself) both relied on array-membership checks ("x in
+    // someArray") and were confirmed broken for list()/getDocs(): verified
+    // via both production Firestore REST calls and the local emulator that
+    // an unconstrained list query with an array-membership rule condition
+    // either returns every document unfiltered, or -- if a matching
+    // array-contains-any where() is added -- fails the whole query outright
+    // with an evaluation error. get() against the same rule always denies
+    // correctly; only list() breaks. This is a real engine limitation, not
+    // a data-modeling mistake -- confirmed reproducible from scratch, not
+    // just a one-off result from the first two attempts.
+    //
+    // This version avoids array membership entirely:
+    //   - `restricted` is a scalar boolean (every course must have it set
+    //     explicitly -- there is no "unset means open" fallback, because a
+    //     matching where() can't filter on a missing field). Equality
+    //     checks against a scalar field in a list rule ARE reliable
+    //     (confirmed via emulator: resource.data.restricted == false paired
+    //     with where('restricted','==',false) filters correctly).
+    //   - courses default to restricted: true. Per-course access for a
+    //     restricted course is an existence check against a subcollection
+    //     doc (courses/{courseId}/assigned/{email}), which get() enforces
+    //     correctly (confirmed via emulator). list() still can't evaluate
+    //     exists() reliably for an unconstrained query, so the client never
+    //     lists restricted courses directly -- see fetchCourses() in
+    //     ui/src/lib/db.js for the two-phase read this requires.
+    function existsAssigned(courseId) {
+      return exists(/databases/$(database)/documents/courses/$(courseId)/assigned/$(request.auth.token.email.lower()));
+    }
+
     match /courses/{courseId} {
-      allow read: if isInvited();
+      allow get: if isInvited() && (resource.data.restricted != true || existsAssigned(courseId));
+      allow list: if isInvited() && resource.data.restricted == false;
       allow write: if false;
+    }
+
+    // Per-course allowlist. Doc ID = lowercased email (so existsAssigned()
+    // above is a direct single-doc get()). `email` is also duplicated as a
+    // field because the client needs to ask "which courses am I assigned
+    // to" via a collectionGroup('assigned') query -- collectionGroup
+    // queries can only filter on document fields, not on the last path
+    // segment, so the doc ID alone isn't queryable that way.
+    match /{path=**}/assigned/{email} {
+      allow list: if isInvited() && resource.data.email == request.auth.token.email.lower();
+      allow get, write: if false;
     }
 
     match /lessons/{lessonId} {

@@ -1,7 +1,9 @@
 import { writable, get } from "svelte/store";
 import {
   collection,
+  collectionGroup,
   getDocs,
+  getDoc,
   doc,
   setDoc,
   query,
@@ -41,6 +43,56 @@ const getCollectionRecords = async (name) => {
   }));
 };
 
+// Courses default to `restricted: true` in firestore.rules, so a plain
+// getDocs(collection(db,'courses')) rule can't grant access per-course --
+// list() only reliably enforces a scalar equality condition
+// (restricted == false), never an exists()-based per-document check. So
+// this is a two-phase read instead of one query:
+//   1. courses explicitly opened (restricted == false) -- a normal,
+//      rules-filtered list query.
+//   2. restricted courses the signed-in user has been individually
+//      assigned -- discovered via a collectionGroup('assigned') query
+//      (also rules-filtered, on the `email` field), then fetched one at a
+//      time with getDoc() (get() enforces the exists() check correctly;
+//      list() does not -- see firestore.rules for why).
+// See Efforts/Projects/Active/個人-線上課程平台專案 for the failed prior
+// attempts this design replaced.
+const getCourseRecords = async () => {
+  const email = auth.currentUser?.email?.toLowerCase();
+  if (!email) return [];
+
+  const openQuery = query(
+    collection(db, "courses"),
+    where("restricted", "==", false),
+  );
+  const assignedQuery = query(
+    collectionGroup(db, "assigned"),
+    where("email", "==", email),
+  );
+
+  const [openSnapshot, assignedSnapshot] = await Promise.all([
+    getDocs(openQuery),
+    getDocs(assignedQuery),
+  ]);
+
+  const openCourses = openSnapshot.docs.map((docSnapshot) => ({
+    id: docSnapshot.id,
+    ...docSnapshot.data(),
+  }));
+
+  const assignedCourseIds = assignedSnapshot.docs.map(
+    (docSnapshot) => docSnapshot.ref.parent.parent.id,
+  );
+  const assignedCourseSnapshots = await Promise.all(
+    assignedCourseIds.map((courseId) => getDoc(doc(db, "courses", courseId))),
+  );
+  const assignedCourses = assignedCourseSnapshots
+    .filter((docSnapshot) => docSnapshot.exists())
+    .map((docSnapshot) => ({ id: docSnapshot.id, ...docSnapshot.data() }));
+
+  return [...openCourses, ...assignedCourses];
+};
+
 // function to fetch all the records from Firestore
 export const fetchRecords = async () => {
   try {
@@ -51,7 +103,7 @@ export const fetchRecords = async () => {
       lessonFaqsRecords,
       lessonResourcesRecords,
     ] = await Promise.all([
-      getCollectionRecords("courses"),
+      getCourseRecords(),
       getCollectionRecords("lessons"),
       getCollectionRecords("resources"),
       getCollectionRecords("lesson_faqs"),
