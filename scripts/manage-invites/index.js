@@ -8,12 +8,16 @@ function usage() {
 用法：node index.js <command> [args]
 
 指令：
-  list                          列出所有受邀 email + 各自可見課程（無 courses 欄位 = 全部課程）
-  list-courses                  列出所有課程 courseId + title，方便挑選要限縮的對象
+  list                          列出所有受邀 email
+  list-courses                  列出所有課程 courseId + title
   invite <email>                新增受邀 email（不影響已存在的文件）
-  show <email>                  顯示單一 email 的邀請狀態
-  set-courses <email> <id1,id2> 限縮該 email 只能看到清單內的課程
-  clear-courses <email>         移除限縮，恢復成看到全部課程
+  show <email>                  顯示單一 email 是否在受邀名單中
+
+注意：受邀者一律可見全部課程。「限縮特定課程」曾經嘗試過（invitedEmails.courses
+與 courses.visibleTo 兩種寫法都試過），但已證實 Firestore rules 引擎對
+「陣列成員比對 + 未加過濾的 list 查詢」不會逐筆過濾（2026-09-07 用 production
+Firestore REST API 驗證：單筆 getDoc 正確擋絕，但 getDocs/runQuery 完全不過濾），
+所以這個功能目前無法用 Firestore rules 實作，已移除相關指令。
 `);
 }
 
@@ -28,11 +32,7 @@ async function list() {
     return;
   }
   snap.docs.forEach((doc) => {
-    const data = doc.data();
-    const scope = Array.isArray(data.courses)
-      ? `限縮：${data.courses.join(', ')}`
-      : '全部課程';
-    console.log(`${doc.id}  -  ${scope}`);
+    console.log(doc.id);
   });
 }
 
@@ -64,44 +64,7 @@ async function show(email) {
   if (!email) return usage();
   const id = docId(email);
   const snap = await db.collection(INVITED_EMAILS_COLLECTION).doc(id).get();
-  if (!snap.exists) {
-    console.log(`${id} 不在受邀名單中。`);
-    return;
-  }
-  const data = snap.data();
-  if (Array.isArray(data.courses)) {
-    console.log(`${id}：限縮可見課程 = ${data.courses.join(', ')}`);
-  } else {
-    console.log(`${id}：可見全部課程（未限縮）`);
-  }
-}
-
-async function setCourses(email, courseIdsArg) {
-  if (!email || !courseIdsArg) return usage();
-  const id = docId(email);
-  const ref = db.collection(INVITED_EMAILS_COLLECTION).doc(id);
-  const existing = await ref.get();
-  if (!existing.exists) {
-    console.error(`${id} 不在受邀名單中，請先跑 invite <email>。`);
-    process.exit(1);
-  }
-  const courseIds = courseIdsArg.split(',').map((s) => s.trim()).filter(Boolean);
-  await ref.set({ courses: courseIds }, { merge: true });
-  console.log(`已將 ${id} 限縮為只能看到：${courseIds.join(', ')}`);
-}
-
-async function clearCourses(email) {
-  if (!email) return usage();
-  const id = docId(email);
-  const ref = db.collection(INVITED_EMAILS_COLLECTION).doc(id);
-  const existing = await ref.get();
-  if (!existing.exists) {
-    console.error(`${id} 不在受邀名單中。`);
-    process.exit(1);
-  }
-  const { FieldValue } = require('firebase-admin/firestore');
-  await ref.update({ courses: FieldValue.delete() });
-  console.log(`已移除 ${id} 的限縮，恢復成可見全部課程。`);
+  console.log(snap.exists ? `${id} 在受邀名單中。` : `${id} 不在受邀名單中。`);
 }
 
 async function main() {
@@ -116,10 +79,6 @@ async function main() {
       return invite(rest[0]);
     case 'show':
       return show(rest[0]);
-    case 'set-courses':
-      return setCourses(rest[0], rest[1]);
-    case 'clear-courses':
-      return clearCourses(rest[0]);
     default:
       return usage();
   }
