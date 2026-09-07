@@ -18,6 +18,21 @@ export const resources = writable([]);
 export const lesson_faqs = writable([]);
 export const lesson_resources = writable([]);
 
+// These stores are module-level (not component state), so they survive a
+// logout/login within the same tab. Without an explicit reset, a
+// permission-denied fetch for a newly signed-in (differently-scoped or
+// uninvited) account leaves the *previous* account's data on screen instead
+// of clearing it -- call this on sign-out so stale content never lingers.
+export const resetRecords = () => {
+  courses.set([]);
+  modules.set([]);
+  lessons.set([]);
+  progress.set([]);
+  resources.set([]);
+  lesson_faqs.set([]);
+  lesson_resources.set([]);
+};
+
 const getCollectionRecords = async (name) => {
   const snapshot = await getDocs(collection(db, name));
   return snapshot.docs.map((docSnapshot) => ({
