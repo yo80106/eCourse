@@ -35,13 +35,13 @@
     ]),
   );
 
-  // pin In Progress courses to the top so students land on what they're
-  // already partway through; stable sort keeps everything else in place
-  $: sortedCourses = [...$courses].sort((a, b) => {
-    const aInProgress = statusByCourse[a.id] === "In Progress";
-    const bInProgress = statusByCourse[b.id] === "In Progress";
-    return (aInProgress ? 0 : 1) - (bInProgress ? 0 : 1);
-  });
+  // order by status so students land on what they're already partway
+  // through first, then what they haven't started, then what's done;
+  // stable sort keeps courses within the same status in place
+  const statusRank = { "In Progress": 0, "Not Started": 1, Completed: 2 };
+  $: sortedCourses = [...$courses].sort(
+    (a, b) => statusRank[statusByCourse[a.id]] - statusRank[statusByCourse[b.id]],
+  );
 
   $: lessonCountByCourse = Object.fromEntries(
     $courses.map((course) => [
