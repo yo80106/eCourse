@@ -22,7 +22,6 @@
   let isOpen = {};
   let loading = {};
   let openCourseId = "";
-  let enableReactivity = true;
 
   // self-directed learning: courses have no auto-assigned progress record, so
   // default to "Not Started" for any course the user hasn't touched yet
@@ -101,15 +100,6 @@
     ]),
   );
 
-  // only courses that match a progress record with "In Progress" status are set to open
-  $: if (enableReactivity) {
-    $progress.forEach((progressRecord) => {
-      if (progressRecord.status === "In Progress") {
-        isOpen[progressRecord.course] = true;
-      }
-    });
-  }
-
   // scroll into view of open courses
   $: {
     (async () => {
@@ -187,7 +177,6 @@
         upsertLocalProgress(updatedProgressRecord);
 
         openCourseId = "";
-        enableReactivity = false;
         loading[courseId] = false;
         isOpen[courseId] = false;
 
