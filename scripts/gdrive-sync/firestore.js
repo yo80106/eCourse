@@ -52,13 +52,20 @@ async function findLessonByDriveId(courseId, driveFileId) {
   return { id: doc.id, ...doc.data() };
 }
 
-async function findLessonByTitle(courseId, title) {
-  const snap = await db
+// moduleId 沒給時退回舊行為（course+title），給了就一併比對 module——
+// 同一門課不同章節共用相同單元標題（例如「自我延伸學習」「總結」）時，
+// 沒有 module 條件會誤判成同一筆 lesson，導致後面的章節寫不進去、
+// 只會不斷覆蓋前一個章節那筆的 driveFileId（曾在實際上傳時踩到，見
+// Efforts/Areas/個人-線上學習平台維運/課程上傳規則.md 已知限制）。
+async function findLessonByTitle(courseId, title, moduleId) {
+  let query = db
     .collection(LESSONS_COLLECTION)
     .where('course', '==', courseId)
-    .where('title', '==', title)
-    .limit(1)
-    .get();
+    .where('title', '==', title);
+  if (moduleId) {
+    query = query.where('module', '==', moduleId);
+  }
+  const snap = await query.limit(1).get();
 
   if (snap.empty) return null;
   const doc = snap.docs[0];
@@ -77,7 +84,7 @@ async function upsertLesson({ courseId, title, sort, driveFileId, module }) {
     };
   }
 
-  const byTitle = await findLessonByTitle(courseId, title);
+  const byTitle = await findLessonByTitle(courseId, title, module);
   if (byTitle) {
     return {
       action: 'UPDATE',
