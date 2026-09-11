@@ -165,6 +165,7 @@
         courseId,
         "Not Started",
         [],
+        { clearCompleted: true },
       );
 
       if (!updatedProgressRecord) {

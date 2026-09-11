@@ -5,6 +5,7 @@
   import Login from "./routes/Login.svelte";
   import MyCourses from "./routes/MyCourses.svelte";
   import Lesson from "./routes/Lesson.svelte";
+  import Account from "./routes/Account.svelte";
   import Search from "./components/Search.svelte";
   import Alert from "./components/Alert.svelte";
   import Icon from "@iconify/svelte";
@@ -27,6 +28,7 @@
   <Router>
     <Route path="/" component={MyCourses} />
     <Route path="/login" component={Login} />
+    <Route path="/account" component={Account} />
     <Route path="/:lessonTitle" component={Lesson} />
     <Route component={NotFound} />
   </Router>

@@ -101,11 +101,14 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // Admin-managed invite list. ID = lowercased invited email. Never
-    // readable/writable by clients -- only via Console or the Admin SDK,
-    // both of which bypass these rules.
+    // Admin-managed invite list. ID = lowercased invited email. Content is
+    // still only writable via Console/Admin SDK (bypasses these rules), but
+    // a signed-in user may fetch their OWN document directly (Account page
+    // shows its createdAt as "Registered Date") -- never list(), which
+    // would let anyone enumerate every invited email.
     match /invitedEmails/{email} {
-      allow read, write: if false;
+      allow get: if isSignedIn() && email == request.auth.token.email.lower();
+      allow list, write: if false;
     }
 
     // Not written by the app yet, but scoped correctly for if/when a profile
@@ -116,6 +119,18 @@ service cloud.firestore {
 
     // Self-reported learning progress: one doc per (user, course), created
     // on demand the first time a student marks progress. No auto-assignment.
+    //
+    // completedAt/courseTitle are an optional pair written together the
+    // moment a course first reaches 100% completed (see toggleLessonCompletion
+    // in ui/src/routes/Lesson.svelte) -- courseTitle is a snapshot so the
+    // Account page's completion history still shows a name even after a
+    // course is later unassigned or its lessons change. Unchecking a single
+    // lesson afterwards leaves both fields alone (this pair tracks history,
+    // not the live derived "Completed" status shown elsewhere) -- they're
+    // only cleared by an explicit Reset Progress (client, deleteField() --
+    // allowed here since a cleared field just isn't in request.resource.data
+    // any more) or by an admin `unassign` (server-side via Admin SDK, see
+    // scripts/manage-invites/index.js, which bypasses these rules entirely).
     match /progress/{progressId} {
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
 
@@ -126,16 +141,20 @@ service cloud.firestore {
         && request.resource.data.course.size() > 0
         && request.resource.data.course.size() < 200
         && request.resource.data.status in ["Not Started", "In Progress", "Completed"]
-        && request.resource.data.keys().hasOnly(["userId", "course", "status", "completedLessons"])
-        && (!("completedLessons" in request.resource.data) || request.resource.data.completedLessons is list);
+        && request.resource.data.keys().hasOnly(["userId", "course", "status", "completedLessons", "completedAt", "courseTitle"])
+        && (!("completedLessons" in request.resource.data) || request.resource.data.completedLessons is list)
+        && (!("completedAt" in request.resource.data) || request.resource.data.completedAt is timestamp)
+        && (!("courseTitle" in request.resource.data) || (request.resource.data.courseTitle is string && request.resource.data.courseTitle.size() < 300));
 
       allow update: if isSignedIn()
         && resource.data.userId == request.auth.uid
         && request.resource.data.userId == resource.data.userId
         && request.resource.data.course == resource.data.course
         && request.resource.data.status in ["Not Started", "In Progress", "Completed"]
-        && request.resource.data.keys().hasOnly(["userId", "course", "status", "completedLessons"])
-        && (!("completedLessons" in request.resource.data) || request.resource.data.completedLessons is list);
+        && request.resource.data.keys().hasOnly(["userId", "course", "status", "completedLessons", "completedAt", "courseTitle"])
+        && (!("completedLessons" in request.resource.data) || request.resource.data.completedLessons is list)
+        && (!("completedAt" in request.resource.data) || request.resource.data.completedAt is timestamp)
+        && (!("courseTitle" in request.resource.data) || (request.resource.data.courseTitle is string && request.resource.data.courseTitle.size() < 300));
     }
   }
 }

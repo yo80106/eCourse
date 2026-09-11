@@ -19,6 +19,10 @@
   // left empty everywhere else (e.g. MyCourses), which hides this section
   export let currentCourseId = "";
   export let currentLessonId = "";
+  // set from the Account route so the sidebar swaps its course-oriented
+  // sections for the account nav (mirrors how isCoursesVisible/currentCourseId
+  // drive the COURSES/COURSE_CONTENTS sections above)
+  export let isAccountVisible = false;
 
   $: currentCourseLessons = currentCourseId
     ? $lessons.filter((lesson) => lesson.course === currentCourseId)
@@ -223,6 +227,26 @@
         </div>
       {/if}
 
+      {#if isAccountVisible}
+        <div class="flex flex-col gap-2">
+          <h3
+            class="flex items-center gap-2 text-xs tracking-[2px] text-white/50"
+          >
+            <Icon class="flex-shrink-0 text-base" icon="ph:user-circle" />
+            {$t("ACCOUNT")}
+          </h3>
+          <div>
+            <button
+              aria-hidden="true"
+              on:click={() => navigate("/account")}
+              class="line-clamp-1 flex w-full items-center gap-2 truncate rounded-md bg-white/10 p-2 text-start text-white"
+            >
+              {$t("accountInfo")}
+            </button>
+          </div>
+        </div>
+      {/if}
+
       {#if $isLoading}
         <div class="w-full space-y-3">
           <div
@@ -272,13 +296,17 @@
       </div>
     {:else}
       <div class="flex items-center justify-between gap-5">
-        <div class="flex items-center gap-2">
+        <div
+          aria-hidden="true"
+          on:click={() => navigate("/account")}
+          class="flex min-w-0 cursor-pointer items-center gap-2 rounded-md p-1 transition hover:bg-white/10"
+        >
           <img
             src={`https://api.dicebear.com/7.x/initials/svg?seed=${$currentUser.email}&backgroundColor=${mainColor}`}
             alt={`${$currentUser.email}'s profile avatar`}
-            class="h-8 w-8 rounded-full"
+            class="h-8 w-8 flex-shrink-0 rounded-full"
           />
-          <div>
+          <div class="min-w-0">
             <h3 class="line-clamp-1 truncate text-wrap break-all">
               {$currentUser.displayName ?? $currentUser.email}
             </h3>

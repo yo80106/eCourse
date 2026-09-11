@@ -163,6 +163,12 @@
       : [...currentCompletedLessons, lessonId];
 
     lessonLoading[lessonId] = true;
+
+    const totalLessons = getCourseLessons(courseId).length;
+    const course = $courses.find((c) => c.id === courseId);
+    const justCompletedCourse =
+      !isCompleted && updatedCompletedLessons.length === totalLessons;
+
     // checking/unchecking a lesson always implies the course is at least
     // "In Progress" -- writing this unconditionally (rather than reusing
     // whatever status the doc already had) is what makes a course that was
@@ -172,15 +178,16 @@
       courseId,
       "In Progress",
       updatedCompletedLessons,
+      justCompletedCourse
+        ? { markCompleted: { courseTitle: course.title } }
+        : undefined,
     );
 
     if (updatedProgressRecord) {
       await tick();
       upsertLocalProgress(updatedProgressRecord);
 
-      const totalLessons = getCourseLessons(courseId).length;
-      if (!isCompleted && updatedCompletedLessons.length === totalLessons) {
-        const course = $courses.find((c) => c.id === courseId);
+      if (justCompletedCourse) {
         showAlert(
           `${course.title.length > 30 ? course.title.slice(0, 30) + "..." : course.title} completed successfully`,
           "success",

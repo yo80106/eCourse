@@ -1,3 +1,4 @@
+const admin = require('firebase-admin');
 const { db } = require('./config');
 
 const INVITED_EMAILS_COLLECTION = 'invitedEmails';
@@ -118,6 +119,35 @@ async function unassign(courseId, email) {
     .doc(id)
     .delete();
   console.log(`已把 ${id} 從課程 ${courseId} 的 assigned 名單移除。`);
+
+  await clearCourseCompletion(courseId, id);
+}
+
+// Unassigning also drops that student's completedAt/courseTitle stamp for
+// this course (progress/{uid}_{courseId} -- see firestore.rules), otherwise
+// the Account page would keep showing a "completed" course they can no
+// longer even see. Looked up by email via Admin Auth since this CLI never
+// deals in Firebase Auth UIDs otherwise; a student who never signed in yet
+// has no Auth record and no progress doc, so a lookup miss is a silent no-op.
+async function clearCourseCompletion(courseId, email) {
+  let userRecord;
+  try {
+    userRecord = await admin.auth().getUserByEmail(email);
+  } catch (error) {
+    return;
+  }
+
+  const progressRef = db.collection('progress').doc(`${userRecord.uid}_${courseId}`);
+  const progressSnap = await progressRef.get();
+  if (!progressSnap.exists || !('completedAt' in progressSnap.data())) {
+    return;
+  }
+
+  await progressRef.update({
+    completedAt: admin.firestore.FieldValue.delete(),
+    courseTitle: admin.firestore.FieldValue.delete(),
+  });
+  console.log(`已清除 ${email} 對課程 ${courseId} 的完成歷史紀錄。`);
 }
 
 async function listAssigned(courseId) {
@@ -143,7 +173,7 @@ async function invite(email) {
     console.log(`${id} 已在受邀名單中，未變動。`);
     return;
   }
-  await ref.set({});
+  await ref.set({ createdAt: admin.firestore.FieldValue.serverTimestamp() });
   console.log(`已新增受邀 email：${id}`);
 }
 

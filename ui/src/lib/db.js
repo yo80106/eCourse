@@ -6,6 +6,7 @@ import {
   getDoc,
   doc,
   setDoc,
+  deleteField,
   query,
   where,
 } from "firebase/firestore";
@@ -162,7 +163,23 @@ export const fetchRecords = async () => {
 // `completedLessons` is optional: omit it to leave whichever lessons were
 // already checked off untouched (write uses merge: true), or pass an array
 // (including []) to explicitly set it -- e.g. Reset Progress clears it.
-export const setCourseProgress = async (courseId, newStatus, completedLessons) => {
+//
+// completedAt/courseTitle are the Account page's completion-history stamp
+// for this course, controlled via the 4th arg:
+//   - { markCompleted: { courseTitle } } -- pass the moment a course first
+//     reaches 100% (see Lesson.svelte); stamps both fields.
+//   - { clearCompleted: true } -- pass on Reset Progress; the student is
+//     explicitly discarding this course's progress, so its completion
+//     history goes with it (an admin `unassign` also clears it server-side,
+//     see scripts/manage-invites/index.js).
+//   - omitted -- leaves whatever completion state already existed alone
+//     (e.g. checking/unchecking a lesson that doesn't finish the course).
+export const setCourseProgress = async (
+  courseId,
+  newStatus,
+  completedLessons,
+  { markCompleted, clearCompleted } = {},
+) => {
   try {
     const uid = auth.currentUser.uid;
     const progressId = `${uid}_${courseId}`;
@@ -170,15 +187,57 @@ export const setCourseProgress = async (courseId, newStatus, completedLessons) =
     const resolvedCompletedLessons =
       completedLessons !== undefined ? completedLessons : existing?.completedLessons;
 
-    const payload = { userId: uid, course: courseId, status: newStatus };
+    const firestorePayload = { userId: uid, course: courseId, status: newStatus };
+    const localPayload = { userId: uid, course: courseId, status: newStatus };
     if (resolvedCompletedLessons !== undefined) {
-      payload.completedLessons = resolvedCompletedLessons;
+      firestorePayload.completedLessons = resolvedCompletedLessons;
+      localPayload.completedLessons = resolvedCompletedLessons;
     }
 
-    await setDoc(doc(db, "progress", progressId), payload, { merge: true });
-    return { id: progressId, ...payload };
+    if (clearCompleted) {
+      firestorePayload.completedAt = deleteField();
+      firestorePayload.courseTitle = deleteField();
+      // localPayload deliberately omits both keys -- upsertLocalProgress
+      // replaces the whole record, so leaving them out here is what drops
+      // the stale completion from the in-memory store too.
+    } else if (markCompleted) {
+      const completedAt = new Date();
+      firestorePayload.completedAt = completedAt;
+      firestorePayload.courseTitle = markCompleted.courseTitle;
+      localPayload.completedAt = completedAt;
+      localPayload.courseTitle = markCompleted.courseTitle;
+    } else if (existing?.completedAt) {
+      // this call doesn't touch completion (e.g. a plain lesson toggle) --
+      // carry the existing stamp over locally, since it's left untouched in
+      // Firestore too (merge: true) and a full local-record replacement
+      // would otherwise silently drop it from the store until next refetch.
+      localPayload.completedAt = existing.completedAt;
+      localPayload.courseTitle = existing.courseTitle;
+    }
+
+    await setDoc(doc(db, "progress", progressId), firestorePayload, {
+      merge: true,
+    });
+    return { id: progressId, ...localPayload };
   } catch (error) {
     showAlert("Failed to update course status. Please try again", "fail");
+    return null;
+  }
+};
+
+// Registered Date on the Account page comes from the admin-managed invite
+// record, not a users/ doc the app writes itself -- see firestore.rules for
+// why this is a get() of the caller's own document only, never a list().
+// Invites created before this field existed have no createdAt (the CLI
+// backfills it only for new invites), so callers must handle a null result.
+export const fetchAccountInfo = async () => {
+  try {
+    const email = auth.currentUser?.email?.toLowerCase();
+    if (!email) return null;
+    const snapshot = await getDoc(doc(db, "invitedEmails", email));
+    return snapshot.exists() ? snapshot.data() : null;
+  } catch (error) {
+    showAlert("Failed to load account info. Please try again", "fail");
     return null;
   }
 };
